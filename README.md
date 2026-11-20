@@ -2,9 +2,10 @@
 
 # GeminiBastionMCP (`gemini-bastion-mcp`)
 
-**English | [简体中文](README.zh-CN.md) | [Live Showcase Site](https://kaiserunix.github.io/gemini-bastion-mcp/) | [GitHub Repo](https://github.com/Kaiserunix/gemini-bastion-mcp)**
+**English | [简体中文](README.zh-CN.md) | [Live Showcase Site](https://kaiserunix.github.io/gemini-bastion-mcp/) | [Product Strategy](docs/PRODUCT_STRATEGY.md) | [GitHub Repo](https://github.com/Kaiserunix/gemini-bastion-mcp)**
 
-**The self-hosted OAuth 2.1 MCP bastion that turns Web Gemini, Claude & ChatGPT into a sandboxed full-stack coding, Codex & Cloudflare ops agent — with 10 tools and 1 approval gate.**
+**Stop clicking "Allow" 40 times on your phone.**
+**The self-hosted OAuth 2.1 MCP bastion that turns Web Gemini, Claude.ai & ChatGPT into a sandboxed full-stack coding, Codex & Cloudflare ops agent — with 10 tools funneled through 1 external approval gate (`publish_changes`).**
 
 [![CI](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml)
 [![Deploy GitHub Pages](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/pages.yml/badge.svg)](https://kaiserunix.github.io/gemini-bastion-mcp/)
@@ -20,9 +21,20 @@
 
 - **Code from `gemini.google.com` on Mobile or Desktop**: Open Web Gemini, sync a GitHub repository, inspect AST/files with `ripgrep`, `ast-grep`, and `repomix`, apply multi-file atomic patches, and run L0/L1/L2 validation suites — without touching a laptop.
 - **Delegate Heavy Work to Background Codex & Shell Jobs**: Dispatch `@openai/codex-sdk` autonomous threads or long builds (`workspace_exec` auto-promotes to background SQLite jobs after 15s). Close the browser tab and receive a scrubbed Webhook alert when it finishes.
-- **Zero Secret Leakage & 1-Gate Blast Radius**: Sandboxed child processes never see `GH_TOKEN`, `CLOUDFLARE_*`, or gateway secrets. Non-destructive `GIT_INDEX_FILE` checkpoints protect your working tree, direct pushes to `main`/`master` are blocked, and every external side effect is funneled through **one single approval gate (`publish_changes`)**.
+- **Zero Secret Leakage & 1-Gate Blast Radius**: Sandboxed shell and Codex subprocesses run with a strict env allowlist (`buildSandboxedEnv()`) that strips `GH_TOKEN`, `CLOUDFLARE_*`, and gateway secrets. Non-destructive `GIT_INDEX_FILE` checkpoints protect your working tree, direct pushes to `main`/`master` are blocked, and every external side effect is funneled through **one single approval gate (`publish_changes`)**.
 
 > **Built for Web Gemini Connected Apps, Claude.ai, ChatGPT Connectors, Cursor & MCP Inspector.**
+
+---
+
+## What a 60-Second Mobile Prompt-to-PR Looks Like
+
+> **You (on phone in Web Gemini):** *"Check why CI failed on PR #42, fix the bug, run tests, and open a fix PR."*
+>
+> 1. `github_inspect` *(Tier 1 · Always Allow)* — Fetches failed Actions logs wrapped in an untrusted-data boundary.
+> 2. `workspace_manage` + `code_explore` *(Tier 1 · Always Allow)* — Syncs repo to `/workspaces/{slug}` and locates the fault via `ripgrep` / `ast-grep`.
+> 3. `code_patch` + `workspace_exec` *(Tier 1 · Always Allow)* — Creates an automatic `GIT_INDEX_FILE` checkpoint, applies the atomic patch, and runs the test suite as UID `1002` (`worker`) with zero gateway secrets.
+> 4. `publish_changes` *(Tier 3 · **Ask Before Running — 1 prompt total**)* — Shows the scrubbed branch/PR summary. You tap **Allow once** → PR opens on a non-protected branch (`main`/`master` direct push blocked).
 
 ---
 
@@ -35,7 +47,7 @@ Most remote MCP setups force an unpleasant tradeoff: either expose dozens of gra
 | **Web Gemini (`gemini.google.com`) Native OAuth** | **Full Support** (OAuth 2.1 + PKCE S256 + DCR up to 16 redirect URIs + 8KB `state` + RFC 8707/9728) | Often missing RFC 9728/8707 or large `state` support | Single-vendor hosted only | Desktop/local client only |
 | **Web Chat Approval UX** | **10 Tools, 1 Approval Gate** (Tier 1/2 `Always Allow`, only `publish_changes` asks) | Dozens of fragmented tools = constant confirmation popups | Read & write tools mixed | Confirm every shell command or run wide open |
 | **Sandboxed Test Runner + Async Codex** | **Built-in** (`workspace_exec` 15s auto-promotion + `@openai/codex-sdk` thread resume) | No execution sandbox | API-only; cannot run local builds/tests | Runs on host; no background job promotion |
-| **Secret Isolation & Undo** | **Dual-UID (1001/1002) + Env Allowlist + `SecretScrubber` + `GIT_INDEX_FILE` Snapshots** | Depends on downstream servers | Cloud-managed | Child processes inherit host env |
+| **Secret Isolation & Undo** | **UID 1002 Shell Isolation + Strict Env Allowlist + `SecretScrubber` + `GIT_INDEX_FILE` Snapshots** | Depends on downstream servers | Cloud-managed | Child processes inherit host env |
 | **Two-Phase Infra Mutations** | **`stage_mutation_plan` (15m TTL + rollback snapshot) -> `publish_changes`** | Direct passthrough writes | Direct writes | None |
 
 ---
@@ -61,26 +73,27 @@ flowchart LR
     DB[("SQLite WAL (/data)\n0700 gateway-only")]
 
     subgraph Funnel["10-Tool Contract (1 Approval Gate)"]
-      T1_8["Tier 1 (1-8): Sandbox & Read-Only\nworkspace_manage · code_explore · code_patch\nworkspace_exec · dispatch_runner · job_status\ngithub_inspect · infra_inspect"]
+      T1_8["Tier 1 (1-8): Workspace Autonomy & External Read-Only\nworkspace_manage · code_explore · code_patch\nworkspace_exec · dispatch_runner · job_status\ngithub_inspect · infra_inspect"]
       T9["Tier 2 (9): Two-Phase Stage\nstage_mutation_plan (15m TTL + Snapshot)"]
       T10["Tier 3 (10): Single External Write Gate\npublish_changes (PR / CF Deploy / Execute Plan)"]
     end
   end
 
-  subgraph Sandbox["Isolated Worker Sandbox (UID 1002: worker)"]
+  subgraph Sandbox["Isolated Workspace Sandbox (/workspaces)"]
     WS["/workspaces/{slug}\nGIT_INDEX_FILE Checkpoints\nL0/L1/L2 Validation"]
-    Codex["@openai/codex-sdk &\nSandboxed Shell (0 Secrets)"]
+    Shell["workspace_exec & shell_task\nUID 1002 (worker) · 0 Secrets"]
+    Codex["@openai/codex-sdk\nworkspace-write · 0 Secrets"]
   end
 
   subgraph External["External Targets & Internal ops_net"]
     GH["GitHub API\n(No push to main/master)"]
-    CFApi["Cloudflare API\n(Workers / Pages / DNS / KV)"]
+    CFApi["Cloudflare API\n(Workers / Pages / DNS / WAF / D1)"]
     MCP2["Downstream MCP-2 Sidecars\n(e.g. ops-ssh on ops_net)"]
   end
 
   Clients -->|"Streamable HTTP /mcp"| CF --> Auth --> Funnel
   CF --> Portal & Admin
-  T1_8 --> WS & Codex
+  T1_8 --> WS & Shell & Codex
   T1_8 -.->|"Read-Only"| GH & CFApi & MCP2
   T9 -->|"Stage Plan + Rollback Snapshot"| DB
   T10 -->|"Audited & Scrubbed Writes"| GH & CFApi & MCP2
@@ -91,26 +104,28 @@ flowchart LR
 
 ## 10 Tools, 1 Approval Gate
 
-Instead of exposing 40+ fine-grained tools that bury mobile/web users under approval prompts, `GeminiBastionMCP` groups every capability by **blast radius** so you can configure permissions cleanly in Web Gemini / Claude:
+Instead of exposing 40+ fine-grained tools that bury mobile/web users under approval prompts, `GeminiBastionMCP` groups every capability by **blast radius** so you can configure per-tool approvals cleanly in Web Gemini or Claude:
 
-### Tier 1 — Sandbox Autonomy & Read-Only Inspection *(Set to `Always Allow`)*
+### Tier 1 — Workspace-Scoped Autonomy & External Read-Only *(Safe for `Always Allow`)*
 
-| # | Tool | Actions & Behavior |
-|---|------|--------------------|
+> **Why `Always Allow` is safe here**: Tools 3–5 (`code_patch`, `workspace_exec`, `dispatch_runner`) edit files and run commands **strictly inside `/workspaces/{slug}`** — protected by zero-secret `buildSandboxedEnv()`, `SecretScrubber`, and automatic `GIT_INDEX_FILE` rollback checkpoints — while performing **zero external writes** to GitHub, Cloudflare, or production hosts.
+
+| # | Tool | Scope & Behavior |
+|---|------|------------------|
 | 1 | `workspace_manage` | `list`, `sync_github`, `init_cf_ops`, `list_checkpoints`, `rollback` (auto-detects stack & `AGENTS.md` / `CLAUDE.md`) |
-| 2 | `code_explore` | `pack` (repomix), `search` (ripgrep), `ast` (ast-grep), `read_lines`, `read_artifact`, `git_diff` |
-| 3 | `code_patch` | Atomic multi-file `patch` (`hunks` + `line_hint`), `create_or_overwrite`, `delete_file` with auto-checkpoint + L0/L1/L2 validation |
-| 4 | `workspace_exec` | Sandboxed shell in `/workspaces/{slug}` (`wait_ms` up to `15000`; auto-promotes long runs to background SQLite `job_id`) |
-| 5 | `dispatch_runner` | Background `codex_readonly`, `codex_write`, or `shell_task` with thread resume, token/duration budgets, and auto-checkpoint |
+| 2 | `code_explore` | Read-only workspace inspection: `pack` (repomix), `search` (ripgrep), `ast` (ast-grep), `read_lines`, `read_artifact`, `git_diff` |
+| 3 | `code_patch` | Local workspace mutation: atomic multi-file `patch` (`hunks` + `line_hint`), `create_or_overwrite`, `delete_file` with auto-checkpoint + L0/L1/L2 validation |
+| 4 | `workspace_exec` | Sandboxed shell in `/workspaces/{slug}` executed as UID `1002` (`worker`) (`wait_ms` up to `15000`; auto-promotes long runs to background SQLite `job_id`) |
+| 5 | `dispatch_runner` | Background `codex_readonly`, `codex_write` (`@openai/codex-sdk` `workspace-write` sandbox), or `shell_task` (UID `1002`) with thread resume, token/duration budgets, and auto-checkpoint |
 | 6 | `job_status` | Poll job status, streamed events, token usage, `thread_id`, `git status -sb`, final report, or `cancel: true` |
-| 7 | `github_inspect` | Read-only PR diffs/files, issue threads, and failed Actions logs (wrapped with untrusted-data boundary markers) |
-| 8 | `infra_inspect` | Read-only Cloudflare inspection (`zones`, `dns_records`, `workers`, `pages`, `kv_namespaces`, `d1_databases`, `waf_rules`, `worker_tail_logs`) + downstream MCP-2 `readonlyTools` |
+| 7 | `github_inspect` | External read-only: PR diffs/files, issue threads, and failed Actions logs (wrapped with untrusted-data boundary markers) |
+| 8 | `infra_inspect` | External read-only: Cloudflare inspection (`zones`, `dns_records`, `workers`, `pages`, `kv_namespaces`, `d1_databases`, `waf_rules`, `worker_tail_logs`) + downstream MCP-2 `readonlyTools` |
 
-### Tier 2 — Zero-Side-Effect Change Staging *(Set to `Always Allow`)*
+### Tier 2 — Zero-Side-Effect Change Staging *(Safe for `Always Allow`)*
 
 | # | Tool | Actions & Behavior |
 |---|------|--------------------|
-| 9 | `stage_mutation_plan` | Captures pre-change live state to build a `rollback_payload` and human-readable diff, issuing a 15-minute `plan_id` for Cloudflare or downstream MCP-2 `mutatingTools`. **Performs zero writes.** |
+| 9 | `stage_mutation_plan` | Captures pre-change live state to build a `rollback_payload` and human-readable diff, issuing a 15-minute `plan_id`. Supports **5 Cloudflare plan types** (`dns_record_create`, `dns_record_update`, `dns_record_delete`, `waf_rule_update`, `d1_sql_mutation`) plus downstream MCP-2 `mutatingTools`. **Performs zero writes.** |
 
 ### Tier 3 — Single External Write Gate *(Set to `Ask Before Running`)*
 
@@ -131,32 +146,27 @@ Instead of exposing 40+ fine-grained tools that bury mobile/web users under appr
    cp .env.example .env
    ```
 
-2. **Generate your `ADMIN_PASSWORD_HASH` (`scrypt:`) and `OAUTH_SIGNING_SECRET`**:
-   Supported formats for `ADMIN_PASSWORD_HASH` in production are `scrypt:<saltHex>:<keyHex>` (recommended, Docker-Compose-safe without `$` escaping) and `sha256:<hex>` (legacy `scrypt$<saltHex>$<keyHex>` and `sha256$<hex>` are also supported; escape `$` as `$$` if used in Docker Compose `.env`). Generate a `scrypt:` hash with Node 22:
+2. **Generate `ADMIN_PASSWORD_HASH` (`scrypt:`) and `OAUTH_SIGNING_SECRET` in one shot** (Node 22+):
    ```bash
-   node -e 'const c=require("node:crypto"),s=c.randomBytes(16).toString("hex");console.log(`scrypt:${s}:${c.scryptSync(process.argv[1],s,32,{N:16384,r:8,p:1}).toString("hex")}`)' 'your-admin-password'
+   node -e 'const c=require("node:crypto"),s=c.randomBytes(16).toString("hex");console.log(`OAUTH_SIGNING_SECRET=${c.randomBytes(32).toString("hex")}\nADMIN_PASSWORD_HASH=scrypt:${s}:${c.scryptSync(process.argv[1],s,32,{N:16384,r:8,p:1}).toString("hex")}`)' 'your-admin-password'
    ```
-   Generate a 32-byte `OAUTH_SIGNING_SECRET`:
-   ```bash
-   node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
-   ```
+   *(The `scrypt:<saltHex>:<keyHex>` format contains no `$` characters, avoiding Docker Compose `.env` interpolation issues; legacy `scrypt$...` and `sha256:` formats remain supported if `$` is escaped as `$$`.)*
 
-3. **Configure required `.env` values**:
+3. **Fill required `.env` values**:
    - `PUBLIC_DOMAIN=https://mcp.yourdomain.com`
    - `TRUST_CF_CONNECTING_IP=true`
-   - `OAUTH_SIGNING_SECRET=<generated hex>`
-   - `ADMIN_PASSWORD_HASH=<generated scrypt:...>`
+   - `OAUTH_SIGNING_SECRET=<generated above>`
+   - `ADMIN_PASSWORD_HASH=<generated above>`
    - `CLOUDFLARE_TUNNEL_TOKEN=<your Cloudflare Zero Trust tunnel token>`
-   - Integration credentials as needed: `GH_TOKEN`, `OPENAI_API_KEY` / `CODEX_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_READONLY_API_TOKEN`, `CLOUDFLARE_API_TOKEN`
+   - Optional client & integration settings: append `claude.ai,chatgpt.com` to `OAUTH_ALLOWED_REDIRECT_HOSTS` if connecting Claude/ChatGPT; add `GH_TOKEN`, `OPENAI_API_KEY` / `CODEX_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_READONLY_API_TOKEN`, `CLOUDFLARE_API_TOKEN` as needed.
 
-4. **Point your Cloudflare Tunnel Public Hostname** (Zero Trust -> Networks -> Tunnels) for `mcp.yourdomain.com` to `http://gateway:8787`, and place `CLOUDFLARE_TUNNEL_TOKEN=<token>` in `docker/.env` (or export it in your shell).
+4. **Point your Cloudflare Tunnel Public Hostname** (Zero Trust → Networks → Tunnels) for `mcp.yourdomain.com` to `http://gateway:8787`.
 
-5. **Build & launch**:
+5. **Build & launch with a single root `.env`** (pass `--env-file .env` so `cloudflared` reads `CLOUDFLARE_TUNNEL_TOKEN` from root `.env` without creating a separate `docker/.env`):
    ```bash
-   docker compose -f docker/docker-compose.yml up -d --build
+   docker compose --env-file .env -f docker/docker-compose.yml up -d --build
    ```
-   > **Note on Docker Compose `.env` escaping**: Using `scrypt:<saltHex>:<keyHex>` avoids Compose `$var` interpolation completely. If you use legacy `scrypt$...` in `.env` with Docker Compose, escape every `$` as `$$`.
-   > **Node 22 Security Baseline**: [`docker/Dockerfile`](docker/Dockerfile) verifies `Node >= 22.23.4` at build time. Override the base tag anytime with `NODE_IMAGE=node:22.23.4-bookworm-slim` (or newer) in `docker/.env` or `--build-arg`. Note that `cloudflared` receives only `TUNNEL_TOKEN` (never mounts `../.env`).
+   > **Security isolation note**: `cloudflared` receives only `TUNNEL_TOKEN` (never mounts `../.env`), and `gateway` explicitly clears `CLOUDFLARE_TUNNEL_TOKEN` from its own environment. [`docker/Dockerfile`](docker/Dockerfile) enforces `Node >= 22.23.4` at build time (override with `NODE_IMAGE=node:22.23.4-bookworm-slim` if needed).
 
 ### Option B: Reverse Proxy with Nginx (Loopback Host Port)
 
@@ -164,7 +174,7 @@ If you already terminate TLS with Nginx on a VPS instead of Cloudflare Tunnel:
 
 1. Bind `gateway` strictly to loopback (`127.0.0.1:8787:8787` or `127.0.0.1:39120:8787`) via a `docker-compose.override.yml`, set `TRUST_CF_CONNECTING_IP=false` in `.env` (unless fronted by Cloudflare), and run `gateway` without `cloudflared`:
    ```bash
-   docker compose -f docker/docker-compose.yml up -d --build gateway
+   docker compose --env-file .env -f docker/docker-compose.yml up -d --build gateway
    ```
 2. Proxy HTTPS traffic to the loopback port with buffering disabled for Streamable HTTP & `/admin` SSE:
    ```nginx
@@ -210,8 +220,15 @@ Verify at `http://127.0.0.1:8787/healthz` and `http://127.0.0.1:8787/`. Both `np
    ```
 3. Gemini automatically discovers `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, and registers via `POST /oauth/register` (supports up to **16 redirect URIs** per client and `state` values up to **8192 bytes**).
 4. Complete the browser OAuth consent prompt. Refresh tokens rotate with a 60-second grace window for concurrent retries.
+5. **Recommended tool permissions**: Set Tools 1–9 (`workspace_manage` through `stage_mutation_plan`) to **Always Allow**, and keep Tool 10 (`publish_changes`) on **Ask Before Running**.
 
 ### Claude.ai, ChatGPT & MCP Inspector (DCR or Static Client Fallback)
+
+> [!IMPORTANT]
+> **Required for Claude.ai & ChatGPT OAuth DCR**: By default, `OAUTH_ALLOWED_REDIRECT_HOSTS` in `.env.example` only allowlists Google/Gemini and localhost hosts (`gemini.google.com,aistudio.google.com,accounts.google.com,localhost,127.0.0.1`). Before connecting Claude.ai or ChatGPT, append their callback hosts in `.env` and restart `gateway`:
+> ```env
+> OAUTH_ALLOWED_REDIRECT_HOSTS=gemini.google.com,aistudio.google.com,accounts.google.com,claude.ai,chatgpt.com,localhost,127.0.0.1
+> ```
 
 - **Automatic DCR**: Point Claude.ai Custom Connectors, ChatGPT, or MCP Inspector directly to `https://mcp.yourdomain.com/mcp`.
 - **Static Client Fallback**: If a client requires pre-configured credentials, set `OAUTH_STATIC_CLIENT_ID` and `OAUTH_STATIC_CLIENT_SECRET` in `.env`, restart `gateway`, and configure:
@@ -227,11 +244,11 @@ In addition to `ADMIN_PASSWORD_HASH`, you can enable **Google OAuth** and/or **G
 
 ### 1. Register Callback URLs
 
-- **Google Cloud Console** (OAuth 2.0 Web Application -> Authorized redirect URIs):
+- **Google Cloud Console** (OAuth 2.0 Web Application → Authorized redirect URIs):
   ```text
   https://<PUBLIC_DOMAIN>/auth/idp/google/callback
   ```
-- **GitHub Developer Settings** (OAuth App -> Authorization callback URL):
+- **GitHub Developer Settings** (OAuth App → Authorization callback URL):
   ```text
   https://<PUBLIC_DOMAIN>/auth/idp/github/callback
   ```
@@ -255,14 +272,14 @@ In addition to `ADMIN_PASSWORD_HASH`, you can enable **Google OAuth** and/or **G
 ## Public Gateway Portal (`GET /`) & `/admin` Mobile PWA
 
 - **Public Gateway Portal (`GET /`)**: Returns a clean dark-mode status page with one-click `/mcp` endpoint copy, `.well-known` discovery links, quick-connect instructions, and a link to `/admin` — **without querying or exposing any private workspaces, jobs, tokens, or secrets**. Clients requesting `Accept: application/json` receive structured JSON status metadata.
-- **Operator Command Cockpit (`/admin`)**: Sign in with the password matching `ADMIN_PASSWORD_HASH`. The mobile-installable PWA provides a top 4-KPI Pulse Strip (`Active Jobs`, `Staged Plans`, `Workspaces`, `OAuth Sessions`), one-click `/mcp` URL copy, live SSE job logs with `[Expand / Collapse]`, confirmation prompts on destructive actions (`Kill`, `Rollback`, `Revoke`, `Delete Client`), and scrubbed `audit_logs`.
+- **Operator Command Cockpit (`/admin`)**: Sign in with the password matching `ADMIN_PASSWORD_HASH` (or configured Google/GitHub OAuth). The mobile-installable PWA provides a top 4-KPI Pulse Strip (`Active Jobs`, `Staged Plans`, `Workspaces`, `OAuth Sessions`), one-click `/mcp` URL copy, live SSE job logs with `[Expand / Collapse]`, confirmation prompts on destructive actions (`Kill`, `Rollback`, `Revoke`, `Delete Client`), and scrubbed `audit_logs`.
 
 ---
 
 ## 6-Layer Security & Guardrails
 
 1. **Zero Secret Leakage**: `workspace_exec`, `shell_task`, and Codex runners use `buildSandboxedEnv()` (strict allowlist stripping `GH_TOKEN`, `CLOUDFLARE_*`, `OAUTH_SIGNING_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*`). All outputs, artifacts, and webhooks pass through `SecretScrubber`.
-2. **Linux UID 1001 / 1002 Isolation**: In Docker, `gateway` (UID `1001`) owns `/data` (`0700`, SQLite DB, `/data/artifacts`, and `CODEX_HOME=/data/codex`) and `/app`, while `worker` (UID `1002`) owns `/workspaces` and `/opt/mise` with zero access to `/data` (and `/opt/mise/shims` is excluded from `gateway`'s `PATH`).
+2. **Linux UID 1001 / 1002 Isolation**: In Docker, `gateway` (UID `1001`) owns `/data` (`0700`, SQLite DB, `/data/artifacts`, and `CODEX_HOME=/data/codex`) and `/app`, while `worker` (UID `1002`) owns `/workspaces` and `/opt/mise` with zero access to `/data` (and `/opt/mise/shims` is excluded from `gateway`'s `PATH`). `workspace_exec` and `shell_task` drop privileges to UID `1002` (`sudo -n -H -u #1002`); Codex tasks run under `@openai/codex-sdk`'s `workspace-write` sandbox + strict env allowlist *(extending UID `1002` isolation to `code_patch` L1/L2 validation subprocesses is tracked as P0 in [docs/PRODUCT_STRATEGY.md](docs/PRODUCT_STRATEGY.md))*.
 3. **Non-Destructive Git Checkpoints**: Pre-patch and pre-Codex snapshots use a temporary `GIT_INDEX_FILE` (`refs/mcp-checkpoints/*`) without mutating your working tree index or `HEAD`.
 4. **Protected Branch & Diff Guard**: `publish_changes` (`github_pr`) blocks direct pushes to `main`, `master`, or the repo's default branch, and blocks committing sensitive files (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `.dev.vars*`).
 5. **Untrusted Data Boundary**: External GitHub issues/PRs/logs, Cloudflare tail logs, and downstream MCP-2 responses are wrapped as untrusted external content to defend against prompt injection.
@@ -279,26 +296,14 @@ Federate internal HTTP or local `stdio` MCP servers (such as `uarlouski/ssh-mcp-
 3. Uncomment `./ops-mcp-config.json:/etc/gemini-bastion/ops-mcp-config.json:ro` in [`docker/docker-compose.yml`](docker/docker-compose.yml) and set `DOWNSTREAM_MCPS_FILE=/etc/gemini-bastion/ops-mcp-config.json` in `.env`.
 4. Build and start with the `ops` profile (uses [`docker/Dockerfile.ops-mcp`](docker/Dockerfile.ops-mcp) with pre-installed binaries so `ops-mcp` runs offline on `internal: true` `ops_net` as non-root `node`):
    ```bash
-   docker compose -f docker/docker-compose.yml --profile ops up -d --build
+   docker compose --env-file .env -f docker/docker-compose.yml --profile ops up -d --build
    ```
 
 **Policy enforcement**: `readonlyTools` run in `infra_inspect`; `mutatingTools` must be staged via `stage_mutation_plan` and executed via `publish_changes`; `deniedTools` and unlisted tools are strictly rejected.
 
 ---
 
-## Webhook Notifications
+## Webhook Notifications & Docs
 
-Set `NOTIFY_WEBHOOK_URL` in `.env` to receive `SecretScrubber`-sanitized JSON POST webhooks whenever background jobs finish/fail/cancel or when staged mutation plans execute or roll back.
-
----
-
-## Pre-Release GitHub Metadata & Media Checklist
-
-When publishing to GitHub, configure the repository front page with:
-
-- **About**: `Self-hosted OAuth 2.1 Streamable HTTP MCP bastion for Web Gemini, Claude & ChatGPT. Sandboxed git workspaces, Codex SDK, Cloudflare ops & 10-tool/1-gate funnel.`
-- **Topics**: `mcp`, `model-context-protocol`, `gemini`, `claude`, `codex`, `oauth21`, `streamable-http`, `cloudflare-tunnel`, `ai-agents`, `devops`, `self-hosted`, `typescript`
-- **Recommended Visual Assets** (`docs/assets/`):
-  - `demo-gemini-pr.gif` — 15s Web Gemini workflow from `code_explore` -> `code_patch` -> single `publish_changes` PR approval
-  - `portal-and-oauth.png` — `GET /` Public Gateway Portal & OAuth 2.1 consent view
-  - `admin-mobile-pwa.png` — `/admin` mobile PWA cockpit showing KPI Pulse Strip & SSE live job stream
+- **Webhooks**: Set `NOTIFY_WEBHOOK_URL` in `.env` to receive `SecretScrubber`-sanitized JSON POST webhooks whenever background jobs finish/fail/cancel or when staged mutation plans execute or roll back.
+- **Further Reading**: [Architecture & Design (`DESIGN.md`)](DESIGN.md) · [Product Strategy & Security Roadmap (`docs/PRODUCT_STRATEGY.md`)](docs/PRODUCT_STRATEGY.md)
