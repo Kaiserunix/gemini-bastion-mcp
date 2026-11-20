@@ -20,6 +20,20 @@ import {
 } from './mcp/landingPage.js';
 import { createMcpHttpHandler } from './mcp/server.js';
 import type { McpToolDeps } from './mcp/tools/index.js';
+import {
+  CircuitBreakerRegistry,
+  JsonlFileAuditSink,
+  MemoryAuditSink,
+  SlidingWindowRateLimiter,
+  SqliteAuditSink,
+  StructuredAuditLogger,
+  createBastionPolicyEvaluator,
+  createResilienceMiddleware,
+  type AuditSink,
+  type PolicyEvaluatorPort,
+  type PolicyRule,
+  type RateLimiterPort,
+} from './security/index.js';
 import type { GatewayConfig, ScrubberLike } from './types.js';
 import { createSecretScrubber } from './utils/secretScrubber.js';
 
@@ -35,6 +49,14 @@ export interface CreateGatewayAppOptions {
   codexRunner?: CodexSdkRunner;
   rateLimitMaxAttempts?: number;
   rateLimitWindowMs?: number;
+  auditLogger?: StructuredAuditLogger;
+  auditSinks?: AuditSink[];
+  mcpRateLimiter?: RateLimiterPort;
+  mcpRateLimitMaxRequests?: number;
+  mcpRateLimitWindowMs?: number;
+  circuitBreakers?: CircuitBreakerRegistry;
+  policyEvaluator?: PolicyEvaluatorPort;
+  policyRules?: PolicyRule[];
 }
 
 export interface GatewayAppInstance {
@@ -48,6 +70,10 @@ export interface GatewayAppInstance {
   cloudflareService: CloudflareService;
   downstreamBridge: DownstreamMcpBridge;
   codexRunner: CodexSdkRunner;
+  auditLogger: StructuredAuditLogger;
+  mcpRateLimiter: RateLimiterPort;
+  circuitBreakers: CircuitBreakerRegistry;
+  policyEvaluator: PolicyEvaluatorPort;
   shutdown: () => Promise<void>;
 }
 
@@ -70,9 +96,59 @@ export function createGatewayApp(
   fs.mkdirSync(config.artifactsDir, { recursive: true });
 
   const db = openDatabase(options.dbPath ?? config.databasePath);
-  const repos = createRepositories(db);
   const scrubber = options.scrubber ?? createSecretScrubber(config, options.env ?? process.env);
+  const repos = createRepositories(db, { scrubber });
   const lockManager = options.lockManager ?? workspaceLockManager;
+
+  const defaultSinks: AuditSink[] = [
+    new SqliteAuditSink(repos.audit),
+    new MemoryAuditSink({ maxEntries: 1000 }),
+  ];
+  if (config.auditLogFilePath) {
+    defaultSinks.push(
+      new JsonlFileAuditSink({
+        filePath: config.auditLogFilePath,
+        workspacesDir: config.workspacesDir,
+      }),
+    );
+  }
+  if (options.auditSinks) {
+    defaultSinks.push(...options.auditSinks);
+  }
+
+  const auditLogger =
+    options.auditLogger ??
+    new StructuredAuditLogger({
+      sinks: defaultSinks,
+      scrubber,
+    });
+  repos.audit.configure({ scrubber, publisher: auditLogger });
+
+  const mcpRateLimiter =
+    options.mcpRateLimiter ??
+    new SlidingWindowRateLimiter({
+      maxRequests: options.mcpRateLimitMaxRequests ?? config.mcpRateLimitMaxRequests ?? 300,
+      windowMs: options.mcpRateLimitWindowMs ?? config.mcpRateLimitWindowMs ?? 60_000,
+    });
+
+  const circuitBreakers =
+    options.circuitBreakers ??
+    new CircuitBreakerRegistry({
+      defaults: {
+        failureThreshold: config.circuitBreakerFailureThreshold ?? 5,
+        resetTimeoutMs: config.circuitBreakerResetTimeoutMs ?? 30_000,
+      },
+      auditPublisher: auditLogger,
+    });
+
+  const policyEvaluator =
+    options.policyEvaluator ??
+    createBastionPolicyEvaluator({
+      rules: options.policyRules,
+      policyJson: config.securityPolicyJson,
+      policyFile: config.securityPolicyFile,
+      auditPublisher: auditLogger,
+    });
 
   ensureStaticClient(config, repos.oauth);
   reconcileOrphanJobs(repos.jobs);
@@ -114,6 +190,8 @@ export function createGatewayApp(
     cloudflareService,
     downstreamBridge,
     codexRunner,
+    policyEvaluator,
+    auditPublisher: auditLogger,
     notifyWebhook,
   };
 
@@ -220,7 +298,17 @@ export function createGatewayApp(
   );
 
   const bearerMiddleware = createBearerMiddleware({ config, repos });
+  const mcpResilienceMiddleware = createResilienceMiddleware({
+    limiter: mcpRateLimiter,
+    breaker: circuitBreakers,
+    circuitName: 'mcp:http',
+    trustCfConnectingIp: config.trustCfConnectingIp,
+    keyPrefix: 'mcp',
+    responseFormat: 'jsonrpc',
+    auditPublisher: auditLogger,
+  });
   app.use('/mcp', bearerMiddleware);
+  app.use('/mcp', mcpResilienceMiddleware);
   app.all('/mcp', createMcpHttpHandler(mcpDeps));
 
   app.onError((err, c) => {
@@ -256,6 +344,7 @@ export function createGatewayApp(
     const activeIds = listActiveJobIds();
     await Promise.allSettled(activeIds.map((id) => cancelActiveJob(id, repos.jobs)));
     await downstreamBridge.closeAll();
+    await auditLogger.close();
     try {
       db.close();
     } catch {
@@ -274,6 +363,10 @@ export function createGatewayApp(
     cloudflareService,
     downstreamBridge,
     codexRunner,
+    auditLogger,
+    mcpRateLimiter,
+    circuitBreakers,
+    policyEvaluator,
     shutdown,
   };
 }

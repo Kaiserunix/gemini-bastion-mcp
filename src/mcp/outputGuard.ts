@@ -1,6 +1,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  extractToolPolicyContext,
+  type PolicyEvaluatorPort,
+} from '../security/policyEvaluator.js';
 import type { McpToolResult, ScrubberLike } from '../types.js';
 
 export const DEFAULT_MAX_OUTPUT_BYTES = 60_000;
@@ -14,6 +18,10 @@ export interface GuardTextOutputOptions {
   artifactsDir: string;
   workspacesDir?: string;
   label?: string;
+  toolName?: string;
+  defaultActor?: string;
+  defaultBranchResolver?: (workspaceSlug: string) => string | undefined;
+  policyEvaluator?: PolicyEvaluatorPort;
   maxBytes?: number;
   headBytes?: number;
   tailBytes?: number;
@@ -322,6 +330,29 @@ export function withMcpGuardrails<TArgs = unknown, TExtra extends McpHandlerExtr
         );
         return {
           content: [{ type: 'text', text: msg }],
+          isError: true,
+        };
+      }
+    }
+
+    if (guardOpts.policyEvaluator && guardOpts.toolName) {
+      const policyCtx = extractToolPolicyContext(
+        guardOpts.toolName,
+        args,
+        extra,
+        guardOpts.defaultActor ?? 'mcp-operator',
+      );
+      if (policyCtx.workspaceSlug && guardOpts.defaultBranchResolver) {
+        policyCtx.defaultBranch = guardOpts.defaultBranchResolver(policyCtx.workspaceSlug);
+      }
+      const decision = guardOpts.policyEvaluator.evaluate(policyCtx);
+      if (!decision.allowed) {
+        const deniedMsg = guardTextOutput(
+          `Error: [${decision.matchedRuleId ?? decision.effect}] ${decision.reason}`,
+          { ...guardOpts, untrustedSource: undefined },
+        );
+        return {
+          content: [{ type: 'text', text: deniedMsg }],
           isError: true,
         };
       }
