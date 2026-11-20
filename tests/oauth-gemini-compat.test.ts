@@ -849,14 +849,14 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     const loginHtml = await loginGet.text();
     const loginCsrf = extractHiddenInput(loginHtml, 'csrf_token');
     const loginSetCookies = loginGet.headers.getSetCookie();
-    const csrfCookie = extractCookieValue(loginSetCookies, 'omni_admin_csrf');
+    const csrfCookie = extractCookieValue(loginSetCookies, 'gb_admin_csrf');
     expect(csrfCookie).toBe(loginCsrf);
 
     const loginPost = await app.request('https://mcp.example.com/admin/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Cookie: `omni_admin_csrf=${csrfCookie}`,
+        Cookie: `gb_admin_csrf=${csrfCookie}`,
       },
       body: new URLSearchParams({
         csrf_token: loginCsrf,
@@ -865,12 +865,12 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     });
     expect(loginPost.status).toBe(302);
     expect(loginPost.headers.get('location')).toBe('/admin');
-    const sessionCookie = extractCookieValue(loginPost.headers.getSetCookie(), 'omni_admin_session');
+    const sessionCookie = extractCookieValue(loginPost.headers.getSetCookie(), 'gb_admin_session');
     expect(sessionCookie).toBeTruthy();
 
     // Dashboard HTML + extract API CSRF token
     const dashRes = await app.request('https://mcp.example.com/admin', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
     });
     expect(dashRes.status).toBe(200);
     const dashHtml = await dashRes.text();
@@ -927,7 +927,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
 
     // KPI Summary API
     const summaryRes = await app.request('https://mcp.example.com/admin/api/summary', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
     });
     expect(summaryRes.status).toBe(200);
     const summaryData = (await summaryRes.json()) as {
@@ -942,7 +942,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
 
     // Audit API
     const auditRes = await app.request('https://mcp.example.com/admin/api/audit', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
     });
     expect(auditRes.status).toBe(200);
     const auditData = (await auditRes.json()) as { logs: Array<{ action: string }> };
@@ -950,7 +950,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
 
     // Plans API
     const plansRes = await app.request('https://mcp.example.com/admin/api/plans', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
     });
     expect(plansRes.status).toBe(200);
     expect(((await plansRes.json()) as { plans: Array<{ plan_id: string }> }).plans[0]?.plan_id).toBe(
@@ -960,14 +960,14 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     // Job Cancel callback (requires CSRF header)
     const cancelNoCsrf = await app.request('https://mcp.example.com/admin/api/jobs/job-1/cancel', {
       method: 'POST',
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
     });
     expect(cancelNoCsrf.status).toBe(403);
 
     const cancelOk = await app.request('https://mcp.example.com/admin/api/jobs/job-1/cancel', {
       method: 'POST',
       headers: {
-        Cookie: `omni_admin_session=${sessionCookie}`,
+        Cookie: `gb_admin_session=${sessionCookie}`,
         'X-CSRF-Token': apiCsrf,
       },
     });
@@ -980,7 +980,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
       {
         method: 'POST',
         headers: {
-          Cookie: `omni_admin_session=${sessionCookie}`,
+          Cookie: `gb_admin_session=${sessionCookie}`,
           'X-CSRF-Token': apiCsrf,
           'Content-Type': 'application/json',
         },
@@ -1014,7 +1014,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     });
 
     const oauthListRes = await app.request('https://mcp.example.com/admin/api/oauth', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
     });
     expect(oauthListRes.status).toBe(200);
     const oauthListData = (await oauthListRes.json()) as {
@@ -1029,7 +1029,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
       {
         method: 'POST',
         headers: {
-          Cookie: `omni_admin_session=${sessionCookie}`,
+          Cookie: `gb_admin_session=${sessionCookie}`,
           'X-CSRF-Token': apiCsrf,
         },
       },
@@ -1042,7 +1042,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
       {
         method: 'DELETE',
         headers: {
-          Cookie: `omni_admin_session=${sessionCookie}`,
+          Cookie: `gb_admin_session=${sessionCookie}`,
           'X-CSRF-Token': apiCsrf,
         },
       },
@@ -1053,7 +1053,7 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     // SSE live jobs stream
     const ac = new AbortController();
     const sseRes = await app.request('https://mcp.example.com/admin/api/jobs/stream', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
       signal: ac.signal,
     });
     expect(sseRes.status).toBe(200);
@@ -1153,22 +1153,22 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     // Admin dashboard HTML uses delegated click handler with zero inline onclick= handlers
     const loginGet = await app.request('https://mcp.example.com/admin/login');
     const loginCsrf = extractHiddenInput(await loginGet.text(), 'csrf_token');
-    const csrfCookie = extractCookieValue(loginGet.headers.getSetCookie(), 'omni_admin_csrf');
+    const csrfCookie = extractCookieValue(loginGet.headers.getSetCookie(), 'gb_admin_csrf');
     const loginPost = await app.request('https://mcp.example.com/admin/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Cookie: `omni_admin_csrf=${csrfCookie}`,
+        Cookie: `gb_admin_csrf=${csrfCookie}`,
       },
       body: new URLSearchParams({
         csrf_token: loginCsrf,
         password: 'super-secret-operator-pw',
       }).toString(),
     });
-    const sessionCookie = extractCookieValue(loginPost.headers.getSetCookie(), 'omni_admin_session');
+    const sessionCookie = extractCookieValue(loginPost.headers.getSetCookie(), 'gb_admin_session');
     const dashHtml = await (
       await app.request('https://mcp.example.com/admin', {
-        headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+        headers: { Cookie: `gb_admin_session=${sessionCookie}` },
       })
     ).text();
     expect(dashHtml).not.toContain('onclick=');
@@ -1357,29 +1357,29 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     }
     const loginGet = await app.request('https://mcp.example.com/admin/login');
     const loginCsrf = extractHiddenInput(await loginGet.text(), 'csrf_token');
-    const csrfCookie = extractCookieValue(loginGet.headers.getSetCookie(), 'omni_admin_csrf');
+    const csrfCookie = extractCookieValue(loginGet.headers.getSetCookie(), 'gb_admin_csrf');
     const loginPost = await app.request('https://mcp.example.com/admin/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Cookie: `omni_admin_csrf=${csrfCookie}`,
+        Cookie: `gb_admin_csrf=${csrfCookie}`,
       },
       body: new URLSearchParams({
         csrf_token: loginCsrf,
         password: 'super-secret-operator-pw',
       }).toString(),
     });
-    const sessionCookie = extractCookieValue(loginPost.headers.getSetCookie(), 'omni_admin_session');
+    const sessionCookie = extractCookieValue(loginPost.headers.getSetCookie(), 'gb_admin_session');
 
     const summaryRes = await app.request('https://mcp.example.com/admin/api/summary', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
     });
     expect(summaryRes.status).toBe(200);
     expect(((await summaryRes.json()) as { activeJobs: number }).activeJobs).toBe(32);
 
     const ac = new AbortController();
     const sseRes = await app.request('https://mcp.example.com/admin/api/jobs/stream', {
-      headers: { Cookie: `omni_admin_session=${sessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
       signal: ac.signal,
     });
     const reader = sseRes.body!.getReader();
@@ -1394,21 +1394,21 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     vi.setSystemTime(tSessionStart);
     const loginGet2 = await app.request('https://mcp.example.com/admin/login');
     const loginCsrf2 = extractHiddenInput(await loginGet2.text(), 'csrf_token');
-    const csrfCookie2 = extractCookieValue(loginGet2.headers.getSetCookie(), 'omni_admin_csrf');
+    const csrfCookie2 = extractCookieValue(loginGet2.headers.getSetCookie(), 'gb_admin_csrf');
     const loginPost2 = await app.request('https://mcp.example.com/admin/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Cookie: `omni_admin_csrf=${csrfCookie2}`,
+        Cookie: `gb_admin_csrf=${csrfCookie2}`,
       },
       body: new URLSearchParams({
         csrf_token: loginCsrf2,
         password: 'super-secret-operator-pw',
       }).toString(),
     });
-    const expSessionCookie = extractCookieValue(loginPost2.headers.getSetCookie(), 'omni_admin_session');
+    const expSessionCookie = extractCookieValue(loginPost2.headers.getSetCookie(), 'gb_admin_session');
     const sseExpRes = await app.request('https://mcp.example.com/admin/api/jobs/stream', {
-      headers: { Cookie: `omni_admin_session=${expSessionCookie}` },
+      headers: { Cookie: `gb_admin_session=${expSessionCookie}` },
     });
     const expReader = sseExpRes.body!.getReader();
     const firstChunk = await expReader.read();

@@ -221,6 +221,37 @@ npm run dev
 
 ---
 
+## 上游管理员 OAuth 登录（Google & GitHub OAuth）
+
+除 `ADMIN_PASSWORD_HASH` 密码登录外，还可以开启 **Google OAuth** 与/或 **GitHub OAuth**，在 `/admin/login` 与 `/oauth/authorize`（MCP 授权确认页）一键完成管理员身份验证：
+
+### 1. 注册回调地址（Callback URLs）
+
+- **Google Cloud Console**（OAuth 2.0 Web Application -> 已获授权的重定向 URI）：
+  ```text
+  https://<PUBLIC_DOMAIN>/auth/idp/google/callback
+  ```
+- **GitHub Developer Settings**（OAuth App -> Authorization callback URL）：
+  ```text
+  https://<PUBLIC_DOMAIN>/auth/idp/github/callback
+  ```
+
+### 2. 配置环境变量（`.env`）
+
+- **Google OAuth**：
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `GOOGLE_OAUTH_ALLOWED_EMAILS`（逗号分隔的允许管理员邮箱白名单）
+- **GitHub OAuth**：
+  - `GITHUB_OAUTH_CLIENT_ID`
+  - `GITHUB_OAUTH_CLIENT_SECRET`
+  - `GITHUB_OAUTH_ALLOWED_USERS`（逗号分隔的允许 GitHub 用户名白名单）
+  - `GITHUB_OAUTH_ALLOWED_IDS` *（可选；若同时配置 `GITHUB_OAUTH_ALLOWED_USERS` 与 `GITHUB_OAUTH_ALLOWED_IDS`，则必须同时匹配）*
+
+> **Fail-Closed 安全模型**：只有同时配置凭据与非空管理员白名单时 IdP 才会启用；在 `NODE_ENV=production` 下，若只填凭据而未配置白名单将直接拒绝启动（Fail-Closed）。Google 登录强制校验 `email_verified: true`，所有上游登录流程均受 PKCE `S256`、`HttpOnly` 绑定 Cookie 与 CSRF 防护保护。
+
+---
+
 ## 公开网关门户 (`GET /`) 与 `/admin` 移动端 PWA 控制台
 
 - **公开网关门户 (`GET /`)**：浏览器访问根路径呈现暗色主题在线状态页，提供一键复制 `/mcp` 端点、`.well-known` 元数据链接、快速接入指引与 `/admin` 入口——**严禁查询或泄漏任何私有工作区、任务、Token 或密钥信息**；请求头包含 `Accept: application/json` 时返回结构化 JSON 状态。

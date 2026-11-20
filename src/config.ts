@@ -119,6 +119,14 @@ const envSchema = z.object({
   OAUTH_REFRESH_TOKEN_TTL_SEC: z.coerce.number().int().min(300).max(31536000).default(2592000),
   OAUTH_REFRESH_GRACE_SEC: z.coerce.number().int().min(0).max(300).default(60),
 
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional().transform(emptyToUndefined),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional().transform(emptyToUndefined),
+  GOOGLE_OAUTH_ALLOWED_EMAILS: z.string().optional(),
+  GITHUB_OAUTH_CLIENT_ID: z.string().optional().transform(emptyToUndefined),
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().optional().transform(emptyToUndefined),
+  GITHUB_OAUTH_ALLOWED_USERS: z.string().optional(),
+  GITHUB_OAUTH_ALLOWED_IDS: z.string().optional(),
+
   GH_TOKEN: z.string().optional().transform(emptyToUndefined),
   CLOUDFLARE_API_TOKEN: z.string().optional().transform(emptyToUndefined),
   CLOUDFLARE_READONLY_API_TOKEN: z.string().optional().transform(emptyToUndefined),
@@ -191,6 +199,16 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const parsed = envSchema.parse(env);
   const nodeEnv = (parsed.NODE_ENV ?? 'development') as NodeEnv;
 
+  const googleOAuthAllowedEmails = parseCommaList(parsed.GOOGLE_OAUTH_ALLOWED_EMAILS, []);
+  const githubOAuthAllowedUsers = parseCommaList(parsed.GITHUB_OAUTH_ALLOWED_USERS, []);
+  const githubOAuthAllowedIds = parseCommaList(parsed.GITHUB_OAUTH_ALLOWED_IDS, []);
+
+  for (const id of githubOAuthAllowedIds) {
+    if (!/^\d+$/.test(id)) {
+      throw new Error(`Invalid numeric GitHub user ID in GITHUB_OAUTH_ALLOWED_IDS: "${id}"`);
+    }
+  }
+
   if (nodeEnv === 'production') {
     const domainUrl = new URL(parsed.PUBLIC_DOMAIN);
     const isLoopback =
@@ -208,6 +226,25 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ) {
       throw new Error(
         'OAUTH_SIGNING_SECRET must be at least 32 non-placeholder characters when NODE_ENV=production',
+      );
+    }
+
+    if (
+      (parsed.GOOGLE_OAUTH_CLIENT_ID || parsed.GOOGLE_OAUTH_CLIENT_SECRET) &&
+      googleOAuthAllowedEmails.length === 0
+    ) {
+      throw new Error(
+        'GOOGLE_OAUTH_ALLOWED_EMAILS must be set (non-empty) when Google OAuth credentials are configured in NODE_ENV=production',
+      );
+    }
+
+    if (
+      (parsed.GITHUB_OAUTH_CLIENT_ID || parsed.GITHUB_OAUTH_CLIENT_SECRET) &&
+      githubOAuthAllowedUsers.length === 0 &&
+      githubOAuthAllowedIds.length === 0
+    ) {
+      throw new Error(
+        'GITHUB_OAUTH_ALLOWED_USERS or GITHUB_OAUTH_ALLOWED_IDS must be set (non-empty) when GitHub OAuth credentials are configured in NODE_ENV=production',
       );
     }
   }
@@ -268,6 +305,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     oauthRefreshTokenTtlSec: parsed.OAUTH_REFRESH_TOKEN_TTL_SEC,
     oauthRefreshGraceSec: parsed.OAUTH_REFRESH_GRACE_SEC,
 
+    googleOAuthClientId: parsed.GOOGLE_OAUTH_CLIENT_ID,
+    googleOAuthClientSecret: parsed.GOOGLE_OAUTH_CLIENT_SECRET,
+    googleOAuthAllowedEmails,
+    githubOAuthClientId: parsed.GITHUB_OAUTH_CLIENT_ID,
+    githubOAuthClientSecret: parsed.GITHUB_OAUTH_CLIENT_SECRET,
+    githubOAuthAllowedUsers,
+    githubOAuthAllowedIds,
+
     ghToken: parsed.GH_TOKEN,
     cloudflareApiToken: parsed.CLOUDFLARE_API_TOKEN,
     cloudflareReadonlyApiToken: parsed.CLOUDFLARE_READONLY_API_TOKEN,
@@ -315,4 +360,39 @@ export function getConfig(): GatewayConfig {
  */
 export function resetConfigCache(): void {
   cachedConfig = null;
+}
+
+/**
+ * Returns true only when Google OAuth client credentials AND a non-empty allowed-emails list are configured.
+ */
+export function isGoogleOAuthEnabled(
+  config: Pick<
+    GatewayConfig,
+    'googleOAuthClientId' | 'googleOAuthClientSecret' | 'googleOAuthAllowedEmails'
+  >,
+): boolean {
+  return Boolean(
+    config.googleOAuthClientId &&
+      config.googleOAuthClientSecret &&
+      config.googleOAuthAllowedEmails.length > 0,
+  );
+}
+
+/**
+ * Returns true only when GitHub OAuth client credentials AND a non-empty user/ID allowlist are configured.
+ */
+export function isGitHubOAuthEnabled(
+  config: Pick<
+    GatewayConfig,
+    | 'githubOAuthClientId'
+    | 'githubOAuthClientSecret'
+    | 'githubOAuthAllowedUsers'
+    | 'githubOAuthAllowedIds'
+  >,
+): boolean {
+  return Boolean(
+    config.githubOAuthClientId &&
+      config.githubOAuthClientSecret &&
+      (config.githubOAuthAllowedUsers.length > 0 || config.githubOAuthAllowedIds.length > 0),
+  );
 }

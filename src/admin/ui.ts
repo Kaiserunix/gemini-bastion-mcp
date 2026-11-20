@@ -78,8 +78,26 @@ self.addEventListener('fetch', (event) => {
 export function renderAdminLoginHtml(params: {
   csrfToken: string;
   errorMessage?: string;
+  googleEnabled?: boolean;
+  githubEnabled?: boolean;
 }): string {
-  const { csrfToken, errorMessage } = params;
+  const { csrfToken, errorMessage, googleEnabled = false, githubEnabled = false } = params;
+  const idpForms: string[] = [];
+  if (googleEnabled) {
+    idpForms.push(`<form method="POST" action="/auth/idp/google/start">
+        <input type="hidden" name="purpose" value="admin" />
+        <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
+        <button class="btn-idp" type="submit">Sign in with Google</button>
+      </form>`);
+  }
+  if (githubEnabled) {
+    idpForms.push(`<form method="POST" action="/auth/idp/github/start">
+        <input type="hidden" name="purpose" value="admin" />
+        <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
+        <button class="btn-idp" type="submit">Sign in with GitHub</button>
+      </form>`);
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -102,13 +120,18 @@ export function renderAdminLoginHtml(params: {
     input[type="password"]:focus { outline:2px solid #3b82f6; border-color:transparent; }
     button { width:100%; padding:11px 14px; border-radius:10px; font-size:0.95rem; font-weight:600; cursor:pointer; border:none; background:#2563eb; color:#fff; }
     button:hover { background:#1d4ed8; }
+    .divider { display:flex; align-items:center; gap:10px; margin:18px 0 14px; color:#64748b; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; }
+    .divider::before, .divider::after { content:''; flex:1; height:1px; background:#26314f; }
+    .idp-stack { display:flex; flex-direction:column; gap:10px; }
+    .btn-idp { background:#0f172a; border:1px solid #334155; color:#f8fafc; }
+    .btn-idp:hover { background:#172554; border-color:#3b82f6; }
   </style>
 </head>
 <body>
   <main class="card">
     <span class="badge">GeminiBastionMCP</span>
     <h1>Operator Console</h1>
-    <p>Sign in with your operator password to monitor jobs, OAuth sessions, staged plans, and audit logs.</p>
+    <p>Sign in with your operator password${idpForms.length > 0 ? ' or a verified upstream account' : ''} to monitor jobs, OAuth sessions, staged plans, and audit logs.</p>
     ${errorMessage ? `<div class="err" role="alert">${escapeHtml(errorMessage)}</div>` : ''}
     <form method="POST" action="/admin/login">
       <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
@@ -116,6 +139,7 @@ export function renderAdminLoginHtml(params: {
       <input id="password" name="password" type="password" autocomplete="current-password" required autofocus />
       <button type="submit">Sign In</button>
     </form>
+    ${idpForms.length > 0 ? `<div class="divider">or</div><div class="idp-stack">${idpForms.join('')}</div>` : ''}
   </main>
 </body>
 </html>`;
@@ -368,13 +392,27 @@ export function renderAdminDashboardHtml(params: {
       const data = await apiFetch('/admin/api/oauth');
       if (!data) return;
       const el = document.getElementById('oauthList');
+      const up = data.upstreamProviders || {};
+      const renderProvider = (label, info) => {
+        if (!info) return '';
+        const statusClass = info.enabled ? 'completed' : 'staged';
+        const statusText = info.enabled ? 'Enabled' : 'Disabled';
+        return '<div class="card"><div class="row"><div><div class="title">' + esc(label) + '</div>'
+          + '<div class="meta">Allowlist entries: ' + esc(info.allowedCount) + ' · Callback: ' + esc(info.callbackUrl) + '</div></div>'
+          + '<div style="display:flex;gap:8px;align-items:center;"><span class="pill ' + statusClass + '">' + statusText + '</span>'
+          + '<button class="btn btn-sm" type="button" data-action="copy-text" data-copy="' + esc(info.callbackUrl) + '">Copy Callback</button>'
+          + '</div></div></div>';
+      };
+      const idpHtml = '<h3>Upstream Operator Login (IdP)</h3>'
+        + renderProvider('Google OAuth', up.google)
+        + renderProvider('GitHub OAuth', up.github);
       const clientsHtml = data.clients.map((c) => '<div class="card"><div class="row"><div><div class="title">' + esc(c.client_name) + (c.is_static ? ' [STATIC]' : '') + '</div>'
         + '<div class="meta">' + esc(c.client_id) + ' · URIs: ' + esc(c.redirect_uris.length) + '</div></div>'
         + '<button class="btn btn-danger" type="button" data-action="delete-client" data-id="' + esc(c.client_id) + '">Delete Client</button></div></div>').join('') || '<div class="empty">No OAuth clients.</div>';
       const tokensHtml = data.activeTokens.map((t) => '<div class="card"><div class="row"><div><div class="title">' + esc(t.token_type) + ' · ' + esc(t.client_id) + '</div>'
         + '<div class="meta">Family: ' + esc(t.token_family_id) + ' · Resource: ' + esc(t.resource || '-') + ' · Expires: ' + esc(fmtTime(t.expires_at)) + '</div></div>'
         + '<button class="btn btn-danger" type="button" data-action="revoke-token" data-hash="' + esc(t.token_hash) + '">Revoke</button></div></div>').join('') || '<div class="empty">No active tokens.</div>';
-      el.innerHTML = '<h3>Clients</h3>' + clientsHtml + '<h3>Active Tokens</h3>' + tokensHtml;
+      el.innerHTML = idpHtml + '<h3>Clients</h3>' + clientsHtml + '<h3>Active Tokens</h3>' + tokensHtml;
       refreshSummary();
     }
 
@@ -422,11 +460,24 @@ export function renderAdminDashboardHtml(params: {
       }
     }
 
+    async function copyPlainText(text, btn) {
+      if (!text) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        }
+      } catch {}
+      const prev = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = prev; }, 1600);
+    }
+
     document.body.addEventListener('click', (event) => {
       const btn = event.target && event.target.closest ? event.target.closest('button[data-action]') : null;
       if (!btn) return;
       const action = btn.getAttribute('data-action');
       if (action === 'copy-mcp') copyMcpUrl(btn.getAttribute('data-url'), btn);
+      else if (action === 'copy-text') copyPlainText(btn.getAttribute('data-copy'), btn);
       else if (action === 'cancel-job') cancelJob(btn.getAttribute('data-id'));
       else if (action === 'rollback-ws') rollbackWs(btn.getAttribute('data-slug'), btn);
       else if (action === 'delete-client') deleteClient(btn.getAttribute('data-id'));

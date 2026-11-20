@@ -72,6 +72,9 @@ Designed specifically for strict OAuth 2.1 compliance and `gemini.google.com` Co
   - Preserves `state` up to **8192 bytes** in SQLite (`oauth_auth_requests.state`).
   - Validates RFC 8707 `resource` parameter when supplied and binds it through auth request -> auth code -> access/refresh tokens.
   - Renders single-operator consent/login page protected by `ADMIN_PASSWORD_HASH` verification (recommended Docker-Compose-safe `scrypt:<saltHex>:<keyHex>`; also supports `scrypt$<saltHex>$<keyHex>`, `sha256:<hex>`, and `sha256$<hex>`) and a per-request CSRF token (`csrf_token`).
+  - Optionally offers **Sign in with Google** (`https://{PUBLIC_DOMAIN}/auth/idp/google/callback`) and **Sign in with GitHub** (`https://{PUBLIC_DOMAIN}/auth/idp/github/callback`) on both `/admin/login` and `/oauth/authorize`:
+    - **Fail-closed activation**: Google OAuth activates only when `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and non-empty `GOOGLE_OAUTH_ALLOWED_EMAILS` are all configured; GitHub OAuth activates only when `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and non-empty `GITHUB_OAUTH_ALLOWED_USERS` or `GITHUB_OAUTH_ALLOWED_IDS` are configured (`NODE_ENV=production` throws on startup if credentials are present without an allowlist).
+    - Uses single-use PKCE + browser-bound `oauth_upstream_states` (`state`, `provider`, `purpose`, `auth_req_id`, `code_verifier`, `binding_hash`, `expires_at`, `used`).
 - **Token Endpoint (`POST /oauth/token`)**:
   - `grant_type=authorization_code`: Atomically consumes `oauth_codes` row, verifies `code_verifier` against `code_challenge` (`S256`), validates `redirect_uri` and `client_id` (and secret for confidential clients), issues opaque/signed access token (`1h` default) + refresh token (`30d` default) under a new `token_family_id`.
   - `grant_type=refresh_token`:
@@ -89,18 +92,19 @@ SQLite operates in WAL mode (`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = O
 2. `oauth_auth_requests (auth_req_id PK, client_id, redirect_uri, state, code_challenge, code_challenge_method, scope, resource, csrf_token, expires_at, used)`
 3. `oauth_codes (code PK, client_id, redirect_uri, code_challenge, scope, resource, expires_at, used)`
 4. `oauth_tokens (token_hash PK, token_type, client_id, scope, resource, token_family_id, expires_at, grace_expires_at, revoked, created_at)`
-5. `workspaces (slug PK, repo_url, default_branch, detected_stack_json, playbook_text, last_synced_at)`
-6. `checkpoints (checkpoint_id PK, workspace_slug, git_commit_sha, git_ref, reason, created_at)`
-7. `jobs (job_id PK, workspace_slug, runner_type, status, command_or_objective, codex_thread_id, checkpoint_id, events_json, token_usage_json, final_report_text, error_message, created_at, updated_at)`
-8. `mutation_plans (plan_id PK, target_service, summary_diff_text, payload_json, rollback_payload_json, status, expires_at, created_at, executed_at)`
-9. `audit_logs (id PK AUTOINCREMENT, actor, action, target, status, details_json, created_at)`
+5. `oauth_upstream_states (state PK, provider, purpose, auth_req_id, code_verifier, binding_hash, expires_at, used, created_at)`
+6. `workspaces (slug PK, repo_url, default_branch, detected_stack_json, playbook_text, last_synced_at)`
+7. `checkpoints (checkpoint_id PK, workspace_slug, git_commit_sha, git_ref, reason, created_at)`
+8. `jobs (job_id PK, workspace_slug, runner_type, status, command_or_objective, codex_thread_id, checkpoint_id, events_json, token_usage_json, final_report_text, error_message, created_at, updated_at)`
+9. `mutation_plans (plan_id PK, target_service, summary_diff_text, payload_json, rollback_payload_json, status, expires_at, created_at, executed_at)`
+10. `audit_logs (id PK AUTOINCREMENT, actor, action, target, status, details_json, created_at)`
 
 ---
 
 ## 6. Security & Isolation Architecture
 
 ### 6.1 Secret Isolation & Scrubbing
-- **Gateway Process vs. Workspace Subprocesses**: `GH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_READONLY_API_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `OAUTH_SIGNING_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*` exist only in the gateway process.
+- **Gateway Process vs. Workspace Subprocesses**: `GH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_READONLY_API_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `OAUTH_SIGNING_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*` exist only in the gateway process.
 - **`buildSandboxedEnv()` (`src/utils/exec.ts`)**: Constructs a minimal allowlist environment (`PATH`, `HOME`, `LANG`, toolchain caches) and rejects/strips all sensitive keys while enforcing `CI=true`, `DEBIAN_FRONTEND=noninteractive`, `GIT_TERMINAL_PROMPT=0`, `PAGER=cat`.
 - **`SecretScrubber` (`src/utils/secretScrubber.ts`)**: Collects all sensitive env/config values (`length >= 8`) plus regexes for `ghp_`, `gho_`, `github_pat_`, `sk-`, JWT `eyJ...`, `Bearer`/`Basic` headers, URL credentials, and Cloudflare tokens, replacing matches with `[REDACTED_SECRET]` across all MCP responses, artifacts, logs, and webhooks.
 

@@ -137,6 +137,27 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: 'upstream_oauth_states',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS oauth_upstream_states (
+          state TEXT PRIMARY KEY,
+          provider TEXT NOT NULL,
+          purpose TEXT NOT NULL,
+          auth_req_id TEXT,
+          code_verifier TEXT NOT NULL,
+          binding_hash TEXT NOT NULL,
+          expires_at INTEGER NOT NULL,
+          used INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_oauth_upstream_states_expires ON oauth_upstream_states(expires_at);
+      `);
+    },
+  },
 ];
 
 /**

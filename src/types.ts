@@ -32,6 +32,14 @@ export interface GatewayConfig {
   oauthRefreshTokenTtlSec: number;
   oauthRefreshGraceSec: number;
 
+  googleOAuthClientId?: string;
+  googleOAuthClientSecret?: string;
+  googleOAuthAllowedEmails: string[];
+  githubOAuthClientId?: string;
+  githubOAuthClientSecret?: string;
+  githubOAuthAllowedUsers: string[];
+  githubOAuthAllowedIds: string[];
+
   ghToken?: string;
   cloudflareApiToken?: string;
   cloudflareReadonlyApiToken?: string;
@@ -108,6 +116,21 @@ export interface OAuthToken {
   expires_at: number;
   grace_expires_at: number | null;
   revoked: boolean;
+  created_at: number;
+}
+
+export type UpstreamOAuthProvider = 'google' | 'github';
+export type UpstreamOAuthPurpose = 'admin' | 'mcp_authorize';
+
+export interface OAuthUpstreamState {
+  state: string;
+  provider: UpstreamOAuthProvider;
+  purpose: UpstreamOAuthPurpose;
+  auth_req_id: string | null;
+  code_verifier: string;
+  binding_hash: string;
+  expires_at: number;
+  used: boolean;
   created_at: number;
 }
 

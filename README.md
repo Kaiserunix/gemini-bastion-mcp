@@ -221,6 +221,37 @@ Verify at `http://127.0.0.1:8787/healthz` and `http://127.0.0.1:8787/`. Both `np
 
 ---
 
+## Upstream Operator Login (Google & GitHub OAuth)
+
+In addition to `ADMIN_PASSWORD_HASH`, you can enable **Google OAuth** and/or **GitHub OAuth** for one-tap operator sign-in on `/admin/login` and MCP consent approval on `/oauth/authorize`:
+
+### 1. Register Callback URLs
+
+- **Google Cloud Console** (OAuth 2.0 Web Application -> Authorized redirect URIs):
+  ```text
+  https://<PUBLIC_DOMAIN>/auth/idp/google/callback
+  ```
+- **GitHub Developer Settings** (OAuth App -> Authorization callback URL):
+  ```text
+  https://<PUBLIC_DOMAIN>/auth/idp/github/callback
+  ```
+
+### 2. Configure Environment Variables (`.env`)
+
+- **Google OAuth**:
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `GOOGLE_OAUTH_ALLOWED_EMAILS` (comma-separated allowlisted operator email(s))
+- **GitHub OAuth**:
+  - `GITHUB_OAUTH_CLIENT_ID`
+  - `GITHUB_OAUTH_CLIENT_SECRET`
+  - `GITHUB_OAUTH_ALLOWED_USERS` (comma-separated allowlisted GitHub username(s))
+  - `GITHUB_OAUTH_ALLOWED_IDS` *(optional; if both `GITHUB_OAUTH_ALLOWED_USERS` and `GITHUB_OAUTH_ALLOWED_IDS` are set, both must match)*
+
+> **Fail-Closed Security Model**: Both IdPs stay disabled unless credentials **and** a non-empty allowlist are configured — and in `NODE_ENV=production`, providing client credentials without an allowlist fails startup closed. Google requires `email_verified: true`, and all upstream OAuth flows are protected by PKCE `S256`, `HttpOnly` state-binding cookies, and CSRF validation.
+
+---
+
 ## Public Gateway Portal (`GET /`) & `/admin` Mobile PWA
 
 - **Public Gateway Portal (`GET /`)**: Returns a clean dark-mode status page with one-click `/mcp` endpoint copy, `.well-known` discovery links, quick-connect instructions, and a link to `/admin` — **without querying or exposing any private workspaces, jobs, tokens, or secrets**. Clients requesting `Accept: application/json` receive structured JSON status metadata.

@@ -1,5 +1,15 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { GatewayDatabase } from '../sqlite.js';
-import type { OAuthAuthRequest, OAuthClient, OAuthCode, OAuthToken, OAuthTokenType } from '../../types.js';
+import type {
+  OAuthAuthRequest,
+  OAuthClient,
+  OAuthCode,
+  OAuthToken,
+  OAuthTokenType,
+  OAuthUpstreamState,
+  UpstreamOAuthProvider,
+  UpstreamOAuthPurpose,
+} from '../../types.js';
 
 interface OAuthClientRow {
   client_id: string;
@@ -45,6 +55,18 @@ interface OAuthTokenRow {
   expires_at: number;
   grace_expires_at: number | null;
   revoked: number;
+  created_at: number;
+}
+
+interface OAuthUpstreamStateRow {
+  state: string;
+  provider: string;
+  purpose: string;
+  auth_req_id: string | null;
+  code_verifier: string;
+  binding_hash: string;
+  expires_at: number;
+  used: number;
   created_at: number;
 }
 
@@ -99,6 +121,27 @@ function mapToken(row: OAuthTokenRow): OAuthToken {
     expires_at: row.expires_at,
     grace_expires_at: row.grace_expires_at,
     revoked: row.revoked === 1,
+    created_at: row.created_at,
+  };
+}
+
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+function mapUpstreamState(row: OAuthUpstreamStateRow): OAuthUpstreamState {
+  return {
+    state: row.state,
+    provider: row.provider as UpstreamOAuthProvider,
+    purpose: row.purpose as UpstreamOAuthPurpose,
+    auth_req_id: row.auth_req_id,
+    code_verifier: row.code_verifier,
+    binding_hash: row.binding_hash,
+    expires_at: row.expires_at,
+    used: row.used === 1,
     created_at: row.created_at,
   };
 }
@@ -402,7 +445,77 @@ export class OAuthRepository {
     return rows.map(mapToken);
   }
 
-  purgeExpired(now = Date.now()): { authRequests: number; codes: number; tokens: number } {
+  createUpstreamState(
+    input: Omit<OAuthUpstreamState, 'used' | 'created_at'> & {
+      used?: boolean;
+      created_at?: number;
+    },
+  ): OAuthUpstreamState {
+    const createdAt = input.created_at ?? Date.now();
+    const used = input.used ? 1 : 0;
+    this.db
+      .prepare(
+        `INSERT INTO oauth_upstream_states
+         (state, provider, purpose, auth_req_id, code_verifier, binding_hash, expires_at, used, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.state,
+        input.provider,
+        input.purpose,
+        input.auth_req_id,
+        input.code_verifier,
+        input.binding_hash,
+        input.expires_at,
+        used,
+        createdAt,
+      );
+
+    return {
+      state: input.state,
+      provider: input.provider,
+      purpose: input.purpose,
+      auth_req_id: input.auth_req_id,
+      code_verifier: input.code_verifier,
+      binding_hash: input.binding_hash,
+      expires_at: input.expires_at,
+      used: Boolean(input.used),
+      created_at: createdAt,
+    };
+  }
+
+  consumeUpstreamState(
+    state: string,
+    provider: UpstreamOAuthProvider,
+    bindingHash: string,
+    now = Date.now(),
+  ): OAuthUpstreamState | null {
+    return this.db.transaction(() => {
+      const row = this.db
+        .prepare('SELECT * FROM oauth_upstream_states WHERE state = ?')
+        .get(state) as OAuthUpstreamStateRow | undefined;
+      if (
+        !row ||
+        row.used !== 0 ||
+        row.provider !== provider ||
+        !timingSafeStringEqual(row.binding_hash, bindingHash) ||
+        row.expires_at <= now
+      ) {
+        return null;
+      }
+
+      const res = this.db
+        .prepare('UPDATE oauth_upstream_states SET used = 1 WHERE state = ? AND used = 0')
+        .run(state);
+      if (res.changes === 0) return null;
+
+      return mapUpstreamState({ ...row, used: 1 });
+    })();
+  }
+
+  purgeExpired(
+    now = Date.now(),
+  ): { authRequests: number; codes: number; tokens: number; upstreamStates: number } {
     return this.db.transaction(() => {
       const authRequests = this.db
         .prepare('DELETE FROM oauth_auth_requests WHERE expires_at <= ?')
@@ -424,7 +537,15 @@ export class OAuthRepository {
              )`,
         )
         .run(now).changes;
-      return { authRequests, codes, tokens: expiredAccess + expiredRefresh };
+      const upstreamStates = this.db
+        .prepare('DELETE FROM oauth_upstream_states WHERE expires_at <= ? OR used = 1')
+        .run(now).changes;
+      return {
+        authRequests,
+        codes,
+        tokens: expiredAccess + expiredRefresh,
+        upstreamStates,
+      };
     })();
   }
 }

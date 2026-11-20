@@ -14,6 +14,8 @@ const EXPLICIT_SECRET_KEYS = [
   'CODEX_API_KEY',
   'OAUTH_SIGNING_SECRET',
   'OAUTH_STATIC_CLIENT_SECRET',
+  'GOOGLE_OAUTH_CLIENT_SECRET',
+  'GITHUB_OAUTH_CLIENT_SECRET',
   'ADMIN_PASSWORD_HASH',
   'NOTIFY_WEBHOOK_URL',
   'DOWNSTREAM_MCPS_JSON',
@@ -118,6 +120,8 @@ export class SecretScrubber implements ScrubberLike {
     this.addSecret(config.adminPasswordHash);
     this.addSecret(config.oauthSigningSecret);
     this.addSecret(config.oauthStaticClientSecret);
+    this.addSecret(config.googleOAuthClientSecret);
+    this.addSecret(config.githubOAuthClientSecret);
     this.addSecret(config.ghToken);
     this.addSecret(config.cloudflareApiToken);
     this.addSecret(config.cloudflareReadonlyApiToken);

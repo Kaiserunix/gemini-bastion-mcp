@@ -1,11 +1,14 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { isGitHubOAuthEnabled, isGoogleOAuthEnabled } from '../config.js';
 import type { AuditRepository } from '../db/repositories/auditRepo.js';
 import type { OAuthRepository } from '../db/repositories/oauthRepo.js';
 import type { GatewayConfig, OAuthAuthRequest, OAuthClient } from '../types.js';
+import { clearMcpAuthBindCookie, setMcpAuthBindCookie } from './cookies.js';
 import {
   constantTimeEqual,
   generateRandomToken,
+  hashToken,
   verifyPassword,
 } from './crypto.js';
 import { isAllowedRedirectUri } from './dcr.js';
@@ -51,7 +54,7 @@ function renderErrorHtml(title: string, message: string): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} — omni-mcp-gateway</title>
+  <title>${escapeHtml(title)} — GeminiBastionMCP</title>
   <style>
     body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#0b1020; color:#e5e7eb; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:16px; }
     .card { max-width:440px; width:100%; background:#131a2e; border:1px solid #26314f; border-radius:14px; padding:24px; box-shadow:0 12px 32px rgba(0,0,0,0.45); }
@@ -73,8 +76,17 @@ function renderConsentHtml(params: {
   authReq: OAuthAuthRequest;
   errorMessage?: string;
   actionPath?: string;
+  googleEnabled?: boolean;
+  githubEnabled?: boolean;
 }): string {
-  const { clientName, authReq, errorMessage, actionPath = '/oauth/authorize' } = params;
+  const {
+    clientName,
+    authReq,
+    errorMessage,
+    actionPath = '/oauth/authorize',
+    googleEnabled = false,
+    githubEnabled = false,
+  } = params;
   const redirectOrigin = (() => {
     try {
       return new URL(authReq.redirect_uri).origin;
@@ -83,12 +95,30 @@ function renderConsentHtml(params: {
     }
   })();
 
+  const idpButtons: string[] = [];
+  if (googleEnabled) {
+    idpButtons.push(`<form method="POST" action="/auth/idp/google/start">
+        <input type="hidden" name="purpose" value="mcp_authorize" />
+        <input type="hidden" name="auth_req_id" value="${escapeHtml(authReq.auth_req_id)}" />
+        <input type="hidden" name="csrf_token" value="${escapeHtml(authReq.csrf_token)}" />
+        <button class="btn-idp btn-google" type="submit">Approve with Google</button>
+      </form>`);
+  }
+  if (githubEnabled) {
+    idpButtons.push(`<form method="POST" action="/auth/idp/github/start">
+        <input type="hidden" name="purpose" value="mcp_authorize" />
+        <input type="hidden" name="auth_req_id" value="${escapeHtml(authReq.auth_req_id)}" />
+        <input type="hidden" name="csrf_token" value="${escapeHtml(authReq.csrf_token)}" />
+        <button class="btn-idp btn-github" type="submit">Approve with GitHub</button>
+      </form>`);
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Authorize Access — omni-mcp-gateway</title>
+  <title>Authorize Access — GeminiBastionMCP</title>
   <style>
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#0b1020; color:#e5e7eb; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:16px; }
@@ -109,13 +139,18 @@ function renderConsentHtml(params: {
     .btn-primary { background:#2563eb; color:#fff; }
     .btn-primary:hover { background:#1d4ed8; }
     .btn-secondary { background:#1e293b; color:#cbd5e1; border:1px solid #334155; }
+    .divider { display:flex; align-items:center; gap:10px; margin:18px 0 14px; color:#64748b; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; }
+    .divider::before, .divider::after { content:''; flex:1; height:1px; background:#26314f; }
+    .idp-stack { display:flex; flex-direction:column; gap:10px; }
+    .btn-idp { width:100%; padding:10px 14px; border-radius:10px; font-size:0.92rem; font-weight:600; cursor:pointer; border:1px solid #334155; background:#0f172a; color:#f8fafc; }
+    .btn-idp:hover { border-color:#3b82f6; background:#172554; }
   </style>
 </head>
 <body>
   <main class="card">
     <span class="badge">OAuth 2.1 + PKCE</span>
     <h1>Authorize ${escapeHtml(clientName)}</h1>
-    <p class="sub">Enter your operator password to grant MCP gateway access.</p>
+    <p class="sub">Approve MCP gateway access using your operator password${idpButtons.length > 0 ? ' or a verified upstream provider' : ''}.</p>
     <div class="meta">
       <div class="meta-row"><span class="meta-k">Client ID</span><span class="meta-v">${escapeHtml(authReq.client_id)}</span></div>
       <div class="meta-row"><span class="meta-k">Redirect Origin</span><span class="meta-v">${escapeHtml(redirectOrigin)}</span></div>
@@ -133,6 +168,7 @@ function renderConsentHtml(params: {
         <button class="btn-primary" type="submit" name="decision" value="approve">Authorize</button>
       </div>
     </form>
+    ${idpButtons.length > 0 ? `<div class="divider">or</div><div class="idp-stack">${idpButtons.join('')}</div>` : ''}
   </main>
 </body>
 </html>`;
@@ -292,10 +328,14 @@ export function createAuthorizeRoutes(deps: AuthorizeDeps): Hono {
       expires_at: Date.now() + AUTH_REQUEST_TTL_MS,
     });
 
+    setMcpAuthBindCookie(c, config, hashToken(authReq.auth_req_id));
+
     return c.html(
       renderConsentHtml({
         clientName: client.client_name,
         authReq,
+        googleEnabled: isGoogleOAuthEnabled(config),
+        githubEnabled: isGitHubOAuthEnabled(config),
       }),
       200,
     );
@@ -364,6 +404,7 @@ export function createAuthorizeRoutes(deps: AuthorizeDeps): Hono {
 
     if (decision === 'deny') {
       oauthRepo.consumeAuthRequest(authReq.auth_req_id);
+      clearMcpAuthBindCookie(c);
       auditRepo?.record({
         actor: 'admin',
         action: 'oauth_authorize',
@@ -399,6 +440,8 @@ export function createAuthorizeRoutes(deps: AuthorizeDeps): Hono {
           clientName: client.client_name,
           authReq,
           errorMessage: 'Invalid operator password. Please try again.',
+          googleEnabled: isGoogleOAuthEnabled(config),
+          githubEnabled: isGitHubOAuthEnabled(config),
         }),
         401,
       );
@@ -411,6 +454,7 @@ export function createAuthorizeRoutes(deps: AuthorizeDeps): Hono {
         400,
       );
     }
+    clearMcpAuthBindCookie(c);
 
     const code = generateRandomToken(32);
     oauthRepo.createCode({

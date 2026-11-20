@@ -1,16 +1,21 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import {
+  clearAdminCsrfCookie,
+  clearAdminSessionCookie,
+  issueAdminSessionCookie,
+  readAdminCsrfCookie,
+  readAdminSessionCookie,
+  setAdminCsrfCookie,
+} from '../auth/cookies.js';
 import {
   constantTimeEqual,
   generateRandomToken,
-  resolveSigningSecret,
-  signSessionCookie,
   verifyPassword,
-  verifySessionCookie,
   type AdminSessionPayload,
 } from '../auth/crypto.js';
 import { getClientIp, IpRateLimiter, readLimitedBodyText } from '../auth/rateLimit.js';
+import { isGitHubOAuthEnabled, isGoogleOAuthEnabled } from '../config.js';
 import type { Repositories } from '../db/repositories/index.js';
 import type { GatewayConfig, ScrubberLike } from '../types.js';
 import { createSecretScrubber } from '../utils/secretScrubber.js';
@@ -22,10 +27,6 @@ import {
   renderAdminServiceWorker,
   type AdminKpiSummary,
 } from './ui.js';
-
-const SESSION_COOKIE_NAME = 'omni_admin_session';
-const CSRF_COOKIE_NAME = 'omni_admin_csrf';
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 export interface AdminCallbacks {
   cancelJob?: (jobId: string) => Promise<boolean>;
@@ -45,11 +46,16 @@ type AdminVariables = {
   adminSession: AdminSessionPayload;
 };
 
-function setAdminSecurityHeaders(c: Context, allowInlineScript = false): void {
+function setAdminSecurityHeaders(
+  c: Context,
+  allowInlineScript = false,
+  allowExternalFormRedirect = false,
+): void {
   const scriptSrc = allowInlineScript ? "'unsafe-inline'" : "'self'";
+  const formAction = allowExternalFormRedirect ? '' : " form-action 'self';";
   c.header(
     'Content-Security-Policy',
-    `default-src 'self'; script-src ${scriptSrc}; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`,
+    `default-src 'self'; script-src ${scriptSrc}; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self';${formAction} frame-ancestors 'none'; base-uri 'none'`,
   );
   c.header('X-Frame-Options', 'DENY');
   c.header('X-Content-Type-Options', 'nosniff');
@@ -69,8 +75,8 @@ function parseLimit(raw: string | undefined, fallback = 50, max = 200): number {
 export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariables }> {
   const { config, repos } = deps;
   const scrubber = deps.scrubber ?? createSecretScrubber(config);
-  const signingSecret = resolveSigningSecret(config);
-  const isHttps = config.publicDomain.toLowerCase().startsWith('https://');
+  const googleEnabled = isGoogleOAuthEnabled(config);
+  const githubEnabled = isGitHubOAuthEnabled(config);
   const loginRateLimiter = new IpRateLimiter(
     deps.rateLimitMaxAttempts ?? 10,
     deps.rateLimitWindowMs ?? 60_000,
@@ -98,24 +104,33 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   });
 
   app.get('/login', (c) => {
-    setAdminSecurityHeaders(c, false);
+    setAdminSecurityHeaders(c, false, true);
     c.header('Cache-Control', 'no-store');
 
     const csrfToken = generateRandomToken(24);
-    setCookie(c, CSRF_COOKIE_NAME, csrfToken, {
-      httpOnly: true,
-      sameSite: 'Lax',
-      secure: isHttps,
-      path: '/admin',
-      maxAge: 600,
-    });
+    setAdminCsrfCookie(c, config, csrfToken);
 
-    return c.html(renderAdminLoginHtml({ csrfToken }), 200);
+    return c.html(
+      renderAdminLoginHtml({
+        csrfToken,
+        googleEnabled,
+        githubEnabled,
+      }),
+      200,
+    );
   });
 
   app.post('/login', async (c) => {
-    setAdminSecurityHeaders(c, false);
+    setAdminSecurityHeaders(c, false, true);
     c.header('Cache-Control', 'no-store');
+
+    const ensureFormCsrf = (): string => {
+      const existing = readAdminCsrfCookie(c);
+      if (existing) return existing;
+      const fresh = generateRandomToken(24);
+      setAdminCsrfCookie(c, config, fresh);
+      return fresh;
+    };
 
     const ip = getClientIp(c, config.trustCfConnectingIp);
     const rate = loginRateLimiter.consume(`admin-login:${ip}`);
@@ -123,8 +138,10 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
       c.header('Retry-After', String(rate.retryAfterSec));
       return c.html(
         renderAdminLoginHtml({
-          csrfToken: generateRandomToken(24),
+          csrfToken: ensureFormCsrf(),
           errorMessage: 'Too many login attempts. Please wait before retrying.',
+          googleEnabled,
+          githubEnabled,
         }),
         429,
       );
@@ -134,8 +151,10 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
     if (!bodyRead.ok) {
       return c.html(
         renderAdminLoginHtml({
-          csrfToken: generateRandomToken(24),
+          csrfToken: ensureFormCsrf(),
           errorMessage: 'Request body exceeds 64KB limit.',
+          googleEnabled,
+          githubEnabled,
         }),
         413,
       );
@@ -158,23 +177,19 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
       submittedCsrf = form.get('csrf_token') ?? '';
     }
 
-    const cookieCsrf = getCookie(c, CSRF_COOKIE_NAME);
+    const cookieCsrf = readAdminCsrfCookie(c);
     const headerCsrf = c.req.header('x-csrf-token') ?? '';
     const candidateCsrf = submittedCsrf || headerCsrf;
 
     if (!cookieCsrf || !candidateCsrf || !constantTimeEqual(candidateCsrf, cookieCsrf)) {
       const freshCsrf = generateRandomToken(24);
-      setCookie(c, CSRF_COOKIE_NAME, freshCsrf, {
-        httpOnly: true,
-        sameSite: 'Lax',
-        secure: isHttps,
-        path: '/admin',
-        maxAge: 600,
-      });
+      setAdminCsrfCookie(c, config, freshCsrf);
       return c.html(
         renderAdminLoginHtml({
           csrfToken: freshCsrf,
           errorMessage: 'Invalid or expired CSRF token. Please try again.',
+          googleEnabled,
+          githubEnabled,
         }),
         403,
       );
@@ -194,28 +209,16 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
         renderAdminLoginHtml({
           csrfToken: cookieCsrf,
           errorMessage: 'Invalid operator password.',
+          googleEnabled,
+          githubEnabled,
         }),
         401,
       );
     }
 
     const now = Date.now();
-    const sessionPayload: AdminSessionPayload = {
-      sub: 'admin',
-      csrf: generateRandomToken(24),
-      iat: now,
-      exp: now + SESSION_TTL_MS,
-    };
-    const signedCookie = signSessionCookie(sessionPayload, signingSecret);
-
-    setCookie(c, SESSION_COOKIE_NAME, signedCookie, {
-      httpOnly: true,
-      sameSite: 'Lax',
-      secure: isHttps,
-      path: '/admin',
-      maxAge: Math.floor(SESSION_TTL_MS / 1000),
-    });
-    deleteCookie(c, CSRF_COOKIE_NAME, { path: '/admin' });
+    const sessionPayload = issueAdminSessionCookie(c, config, now);
+    clearAdminCsrfCookie(c);
 
     repos.audit.record({
       actor: 'admin',
@@ -234,8 +237,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   });
 
   app.post('/logout', async (c) => {
-    const rawSession = getCookie(c, SESSION_COOKIE_NAME);
-    const session = verifySessionCookie(rawSession, signingSecret);
+    const session = readAdminSessionCookie(c, config);
 
     if (session) {
       let submittedCsrf = c.req.header('x-csrf-token') ?? '';
@@ -252,7 +254,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
       }
     }
 
-    deleteCookie(c, SESSION_COOKIE_NAME, { path: '/admin' });
+    clearAdminSessionCookie(c);
     return c.redirect('/admin/login', 302);
   });
 
@@ -278,8 +280,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   };
 
   app.get('/', (c) => {
-    const rawSession = getCookie(c, SESSION_COOKIE_NAME);
-    const session = verifySessionCookie(rawSession, signingSecret);
+    const session = readAdminSessionCookie(c, config);
     if (!session) {
       return c.redirect('/admin/login', 302);
     }
@@ -297,8 +298,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   });
 
   app.use('/api/*', async (c, next) => {
-    const rawSession = getCookie(c, SESSION_COOKIE_NAME);
-    const session = verifySessionCookie(rawSession, signingSecret);
+    const session = readAdminSessionCookie(c, config);
     if (!session) {
       return c.json({ error: 'unauthorized' }, 401);
     }
@@ -495,6 +495,21 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   });
 
   app.get('/api/oauth', (c) => {
+    const publicBase = config.publicDomain.replace(/\/+$/, '');
+    const upstreamProviders = {
+      google: {
+        enabled: googleEnabled,
+        allowedCount: config.googleOAuthAllowedEmails.length,
+        callbackUrl: `${publicBase}/auth/idp/google/callback`,
+      },
+      github: {
+        enabled: githubEnabled,
+        allowedCount:
+          config.githubOAuthAllowedUsers.length + config.githubOAuthAllowedIds.length,
+        callbackUrl: `${publicBase}/auth/idp/github/callback`,
+      },
+    };
+
     const clients = repos.oauth.listClients().map((client) => ({
       client_id: client.client_id,
       client_name: client.client_name,
@@ -516,7 +531,9 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
       created_at: tok.created_at,
     }));
 
-    return c.json({ clients, activeTokens }, 200, { 'Cache-Control': 'no-store' });
+    return c.json({ upstreamProviders, clients, activeTokens }, 200, {
+      'Cache-Control': 'no-store',
+    });
   });
 
   app.post('/api/oauth/tokens/:hash/revoke', (c) => {

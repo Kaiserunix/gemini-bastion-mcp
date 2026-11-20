@@ -14,11 +14,13 @@ import {
 } from './middleware.js';
 import { IpRateLimiter, MAX_AUTH_BODY_BYTES, getClientIp, readLimitedBodyText } from './rateLimit.js';
 import { createTokenRoutes } from './token.js';
+import { createUpstreamIdpRoutes } from './upstreamIdp.js';
 
 export interface AuthDeps {
   config: GatewayConfig;
   db?: GatewayDatabase;
   repos: Pick<Repositories, 'oauth' | 'audit'>;
+  upstreamFetch?: typeof fetch;
   rateLimitMaxAttempts?: number;
   rateLimitWindowMs?: number;
 }
@@ -64,6 +66,15 @@ export function createAuthApp(deps: AuthDeps): Hono {
       auditRepo: repos.audit,
     }),
   );
+  app.route(
+    '/',
+    createUpstreamIdpRoutes({
+      config,
+      oauthRepo: repos.oauth,
+      auditRepo: repos.audit,
+      upstreamFetch: deps.upstreamFetch,
+    }),
+  );
 
   return app;
 }
@@ -95,6 +106,24 @@ export {
   readLimitedBodyText,
 };
 export type { OAuthAuthContext };
+export {
+  ADMIN_SESSION_COOKIE_NAME,
+  ADMIN_CSRF_COOKIE_NAME,
+  MCP_AUTH_BIND_COOKIE_NAME,
+  UPSTREAM_OAUTH_COOKIE_NAME,
+  issueAdminSessionCookie,
+  readAdminSessionCookie,
+  clearAdminSessionCookie,
+  setAdminCsrfCookie,
+  readAdminCsrfCookie,
+  clearAdminCsrfCookie,
+  setMcpAuthBindCookie,
+  readMcpAuthBindCookie,
+  clearMcpAuthBindCookie,
+  setUpstreamOAuthCookie,
+  readUpstreamOAuthCookie,
+  clearUpstreamOAuthCookie,
+} from './cookies.js';
 export {
   hashToken,
   hashPasswordScrypt,
