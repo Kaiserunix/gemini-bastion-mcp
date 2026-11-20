@@ -1,5 +1,5 @@
-import { I18N } from '../data/i18n.js';
-import { OAUTH_SEQUENCE, SETUP_MODES } from '../data/walkthrough.js';
+import { I18N } from '../catalog/i18n.js';
+import { OAUTH_SEQUENCE, SETUP_MODES } from '../catalog/walkthrough.js';
 import { escapeHtml, normalizeDomainInput } from '../utils/dom.js';
 
 /**

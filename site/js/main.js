@@ -2,7 +2,7 @@ import { createGateSimulator } from './components/gateSimulator.js';
 import { createSetupWalkthrough } from './components/setupWalkthrough.js';
 import { createToolExplorer } from './components/toolExplorer.js';
 import { createUiPreview } from './components/uiPreview.js';
-import { I18N } from './data/i18n.js';
+import { I18N } from './catalog/i18n.js';
 
 /**
  * GeminiBastionMCP Showcase Entrypoint

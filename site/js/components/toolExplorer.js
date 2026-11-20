@@ -1,4 +1,4 @@
-import { TOOLS } from '../data/tools.js';
+import { TOOLS } from '../catalog/tools.js';
 import { escapeHtml } from '../utils/dom.js';
 
 /**

@@ -1,5 +1,5 @@
-import { GATE_SCENARIOS, PIPELINE_NODES } from '../data/gateScenarios.js';
-import { I18N } from '../data/i18n.js';
+import { GATE_SCENARIOS, PIPELINE_NODES } from '../catalog/gateScenarios.js';
+import { I18N } from '../catalog/i18n.js';
 import { escapeHtml } from '../utils/dom.js';
 
 /**
