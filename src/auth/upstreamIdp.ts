@@ -1,8 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { isGitHubOAuthEnabled, isGoogleOAuthEnabled } from '../config.js';
-import type { AuditRepository } from '../db/repositories/auditRepo.js';
-import type { OAuthRepository } from '../db/repositories/oauthRepo.js';
 import type { GatewayConfig, UpstreamOAuthProvider, UpstreamOAuthPurpose } from '../types.js';
 import {
   clearAdminCsrfCookie,
@@ -21,6 +19,7 @@ import {
   hashToken,
 } from './crypto.js';
 import { getClientIp, IpRateLimiter, readLimitedBodyText } from './rateLimit.js';
+import type { AdminSessionManager, AuditLogger, OAuthStore, RateLimiter } from './store.js';
 
 const UPSTREAM_STATE_TTL_MS = 10 * 60 * 1000;
 const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
@@ -28,11 +27,28 @@ const UPSTREAM_FETCH_TIMEOUT_MS = 10_000;
 
 export interface UpstreamIdpDeps {
   config: GatewayConfig;
-  oauthRepo: OAuthRepository;
-  auditRepo?: AuditRepository;
+  oauthStore?: Pick<
+    OAuthStore,
+    | 'getAuthRequest'
+    | 'consumeAuthRequest'
+    | 'createUpstreamState'
+    | 'consumeUpstreamState'
+    | 'createCode'
+  >;
+  oauthRepo?: Pick<
+    OAuthStore,
+    | 'getAuthRequest'
+    | 'consumeAuthRequest'
+    | 'createUpstreamState'
+    | 'consumeUpstreamState'
+    | 'createCode'
+  >;
+  auditRepo?: AuditLogger;
+  auditLogger?: AuditLogger;
+  sessionManager?: AdminSessionManager;
   upstreamFetch?: typeof fetch;
-  startRateLimiter?: IpRateLimiter;
-  callbackRateLimiter?: IpRateLimiter;
+  startRateLimiter?: RateLimiter;
+  callbackRateLimiter?: RateLimiter;
 }
 
 function escapeHtml(value: string): string {
@@ -99,7 +115,12 @@ function getCallbackUrl(config: GatewayConfig, provider: UpstreamOAuthProvider):
  * - `GET /auth/idp/:provider/callback`
  */
 export function createUpstreamIdpRoutes(deps: UpstreamIdpDeps): Hono {
-  const { config, oauthRepo, auditRepo } = deps;
+  const { config, sessionManager } = deps;
+  const oauthRepo = deps.oauthStore ?? deps.oauthRepo;
+  if (!oauthRepo) {
+    throw new Error('createUpstreamIdpRoutes requires oauthStore or oauthRepo');
+  }
+  const auditRepo = deps.auditLogger ?? deps.auditRepo;
   const fetcher = deps.upstreamFetch ?? fetch;
   const startRateLimiter = deps.startRateLimiter ?? new IpRateLimiter(20, 60_000);
   const callbackRateLimiter = deps.callbackRateLimiter ?? new IpRateLimiter(30, 60_000);
@@ -482,7 +503,7 @@ export function createUpstreamIdpRoutes(deps: UpstreamIdpDeps): Hono {
     }
 
     if (upstreamState.purpose === 'admin') {
-      issueAdminSessionCookie(c, config);
+      issueAdminSessionCookie(c, config, Date.now(), sessionManager);
       clearAdminCsrfCookie(c);
       auditRepo?.record({
         actor,

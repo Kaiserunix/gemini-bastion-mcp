@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import type { OAuthStore } from '../../auth/store.js';
 import type { GatewayDatabase } from '../sqlite.js';
 import type {
   OAuthAuthRequest,
@@ -43,6 +44,7 @@ interface OAuthCodeRow {
   resource: string | null;
   expires_at: number;
   used: number;
+  issued_family_id?: string | null;
 }
 
 interface OAuthTokenRow {
@@ -107,6 +109,7 @@ function mapCode(row: OAuthCodeRow): OAuthCode {
     resource: row.resource,
     expires_at: row.expires_at,
     used: row.used === 1,
+    issued_family_id: row.issued_family_id ?? null,
   };
 }
 
@@ -146,8 +149,12 @@ function mapUpstreamState(row: OAuthUpstreamStateRow): OAuthUpstreamState {
   };
 }
 
-export class OAuthRepository {
+export class OAuthRepository implements OAuthStore {
   constructor(private readonly db: GatewayDatabase) {}
+
+  runInTransaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
 
   createClient(input: {
     client_id: string;
@@ -319,13 +326,19 @@ export class OAuthRepository {
     })();
   }
 
-  createCode(input: Omit<OAuthCode, 'used'> & { used?: boolean }): OAuthCode {
+  createCode(
+    input: Omit<OAuthCode, 'used' | 'issued_family_id'> & {
+      used?: boolean;
+      issued_family_id?: string | null;
+    },
+  ): OAuthCode {
     const used = input.used ? 1 : 0;
+    const issuedFamilyId = input.issued_family_id ?? null;
     this.db
       .prepare(
         `INSERT INTO oauth_codes
-         (code, client_id, redirect_uri, code_challenge, scope, resource, expires_at, used)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (code, client_id, redirect_uri, code_challenge, scope, resource, expires_at, used, issued_family_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.code,
@@ -336,11 +349,13 @@ export class OAuthRepository {
         input.resource,
         input.expires_at,
         used,
+        issuedFamilyId,
       );
 
     return {
       ...input,
       used: Boolean(input.used),
+      issued_family_id: issuedFamilyId,
     };
   }
 
@@ -365,6 +380,12 @@ export class OAuthRepository {
       if (res.changes === 0) return null;
       return mapCode({ ...row, used: 1 });
     })();
+  }
+
+  setCodeIssuedFamily(code: string, familyId: string): void {
+    this.db
+      .prepare('UPDATE oauth_codes SET issued_family_id = ? WHERE code = ?')
+      .run(familyId, code);
   }
 
   createToken(

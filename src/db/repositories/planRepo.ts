@@ -1,5 +1,8 @@
+import type { ClaimPlanResult, PlanStore } from '../../policy/types.js';
 import type { GatewayDatabase } from '../sqlite.js';
 import type { MutationPlanRecord, MutationPlanStatus } from '../../types.js';
+
+export type { ClaimPlanResult };
 
 interface MutationPlanRow {
   plan_id: string;
@@ -29,11 +32,7 @@ function mapPlan(row: MutationPlanRow): MutationPlanRecord {
   };
 }
 
-export type ClaimPlanResult =
-  | { ok: true; plan: MutationPlanRecord }
-  | { ok: false; reason: 'not_found' | 'expired' | 'invalid_status'; plan?: MutationPlanRecord };
-
-export class PlanRepository {
+export class PlanRepository implements PlanStore {
   constructor(private readonly db: GatewayDatabase) {}
 
   createPlan(input: {
@@ -129,6 +128,23 @@ export class PlanRepository {
       ...existing,
       status,
       executed_at: nextExecutedAt,
+    };
+  }
+
+  updatePlanRollbackPayload(
+    planId: string,
+    rollbackPayload: Record<string, unknown> | null,
+  ): MutationPlanRecord | null {
+    const existing = this.getPlan(planId);
+    if (!existing) return null;
+
+    this.db
+      .prepare('UPDATE mutation_plans SET rollback_payload_json = ? WHERE plan_id = ?')
+      .run(rollbackPayload ? JSON.stringify(rollbackPayload) : null, planId);
+
+    return {
+      ...existing,
+      rollback_payload: rollbackPayload,
     };
   }
 
