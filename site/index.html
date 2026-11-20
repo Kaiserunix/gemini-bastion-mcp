@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="description" content="GeminiBastionMCP (gemini-bastion-mcp) — Self-hosted OAuth 2.1 Streamable HTTP MCP bastion that turns Web Gemini, Claude & ChatGPT into a sandboxed full-stack coding, Codex & Cloudflare ops agent with 10 tools and 1 approval gate." />
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <title>GeminiBastionMCP — Self-Hosted OAuth 2.1 Streamable HTTP MCP Bastion</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-alt: #0e1528;
+      --card: #131a2e;
+      --card-2: #0f1628;
+      --border: #233054;
+      --border-hi: #35497d;
+      --text: #e6ecff;
+      --muted: #93a3c8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-soft: rgba(59, 130, 246, 0.14);
+      --green: #10b981;
+      --green-soft: rgba(16, 185, 129, 0.14);
+      --amber: #f59e0b;
+      --amber-soft: rgba(245, 158, 11, 0.14);
+      --red: #ef4444;
+      --red-soft: rgba(239, 68, 68, 0.15);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, "Noto Sans SC", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 85% 0%, rgba(59, 130, 246, 0.18) 0%, transparent 45%),
+        radial-gradient(circle at 12% 18%, rgba(16, 185, 129, 0.1) 0%, transparent 40%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a { color: #7db0ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* Sticky Top Navigation */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11, 16, 32, 0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .navbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 0;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 1.12rem;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .brand:hover { text-decoration: none; }
+    .brand img { width: 28px; height: 28px; border-radius: 7px; }
+    .brand-slug {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #93c5fd;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .nav-links a {
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 15px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .btn:hover {
+      border-color: var(--accent);
+      background: #172240;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 58px 0 38px;
+      text-align: center;
+    }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      font-weight: 600;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: #bfd4ff;
+    }
+    .badge.green { border-color: rgba(16, 185, 129, 0.5); color: #86efac; background: var(--green-soft); }
+    .badge.blue { border-color: rgba(59, 130, 246, 0.5); color: #93c5fd; background: var(--accent-soft); }
+    .badge.amber { border-color: rgba(245, 158, 11, 0.5); color: #fde68a; background: var(--amber-soft); }
+
+    .hero h1 {
+      margin: 0 auto 14px;
+      max-width: 920px;
+      font-size: clamp(1.95rem, 4.2vw, 3.1rem);
+      line-height: 1.18;
+      letter-spacing: -0.025em;
+    }
+    .hero-subtitle {
+      font-family: var(--mono);
+      font-size: 0.92rem;
+      color: #93c5fd;
+      margin: 0 auto 14px;
+      letter-spacing: 0.02em;
+    }
+    .hero-lead {
+      max-width: 820px;
+      margin: 0 auto 26px;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+    .hero-ctas {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .hero-ctas .btn {
+      padding: 11px 20px;
+      font-size: 0.95rem;
+    }
+    .portal-notice {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: rgba(19, 26, 46, 0.75);
+      border: 1px dashed var(--border-hi);
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    /* Section Headers */
+    section.section {
+      padding: 44px 0;
+      border-top: 1px solid rgba(35, 48, 84, 0.65);
+    }
+    .section-header {
+      margin-bottom: 24px;
+    }
+    .section-eyebrow {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #60a5fa;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .section-title {
+      margin: 0 0 8px;
+      font-size: clamp(1.4rem, 2.5vw, 1.9rem);
+      letter-spacing: -0.015em;
+    }
+    .section-desc {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.96rem;
+      max-width: 820px;
+    }
+
+    /* Comparison Table */
+    .table-wrap {
+      overflow-x: auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+    table.cmp-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      font-size: 0.9rem;
+    }
+    .cmp-table th, .cmp-table td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .cmp-table th {
+      background: var(--card-2);
+      color: #c7d5ff;
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .cmp-table tr:last-child td { border-bottom: none; }
+    .cmp-table td.hi {
+      background: rgba(59, 130, 246, 0.07);
+      color: #f0f6ff;
+      font-weight: 500;
+    }
+
+    /* Architecture Diagram Grid */
+    .arch-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+    }
+    .arch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+      align-items: stretch;
+    }
+    .arch-stage {
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+    .arch-stage.stage-gateway { border-color: #3b82f6; box-shadow: 0 0 24px rgba(59, 130, 246, 0.12); }
+    .arch-stage.stage-sandbox { border-color: #10b981; }
+    .arch-stage.stage-ext { border-color: #f59e0b; }
+    .arch-stage-tag {
+      font-family: var(--mono);
+      font-size: 0.73rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #93c5fd;
+    }
+    .arch-stage h3 {
+      margin: 0;
+      font-size: 1.02rem;
+    }
+    .arch-node {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.84rem;
+    }
+    .arch-node strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 3px;
+      font-family: var(--mono);
+      font-size: 0.81rem;
+    }
+    .arch-node span { color: var(--muted); font-size: 0.8rem; }
+
+    /* Interactive 10-Tool Explorer */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .filter-pill {
+      padding: 8px 15px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-pill:hover { color: var(--text); border-color: var(--border-hi); }
+    .filter-pill.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+      gap: 16px;
+    }
+    .tool-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    .tool-card:hover { transform: translateY(-2px); border-color: var(--border-hi); }
+    .tool-card.tier-1 { border-top: 3px solid var(--green); }
+    .tool-card.tier-2 { border-top: 3px solid var(--amber); }
+    .tool-card.tier-3 { border-top: 3px solid var(--red); background: linear-gradient(180deg, rgba(239, 68, 68, 0.08) 0%, var(--card) 45%); }
+
+    .tool-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .tool-name {
+      font-family: var(--mono);
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .tool-num {
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: var(--muted);
+    }
+    .tier-badge {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .tier-badge.t1 { background: var(--green-soft); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.45); }
+    .tier-badge.t2 { background: var(--amber-soft); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.5); }
+    .tier-badge.t3 { background: var(--red-soft); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.55); }
+
+    .tool-desc {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .tool-actions-list {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: #b9ccff;
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .annot-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .annot-chip {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .annot-chip.true-green { color: #86efac; border-color: rgba(16, 185, 129, 0.4); }
+    .annot-chip.true-red { color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); }
+
+    /* Interactive UI Previews */
+    .preview-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .preview-tab-group { display: flex; gap: 10px; flex-wrap: wrap; }
+    .preview-label {
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: #fde68a;
+      background: var(--amber-soft);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .mockup-window {
+      background: #080c18;
+      border: 1px solid var(--border-hi);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    }
+    .mockup-bar {
+      background: #11182b;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .mockup-dots { display: flex; gap: 6px; }
+    .mockup-dots span { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .mockup-body { padding: 22px; }
+    .preview-pane { display: none; }
+    .preview-pane.active { display: block; }
+
+    .mock-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .mock-kpi {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+    .mock-kpi-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; font-weight: 700; }
+    .mock-kpi-val { font-size: 1.35rem; font-weight: 800; font-family: var(--mono); margin-top: 2px; }
+    .mock-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    .mock-pre {
+      background: #070b15;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: #cbd5e1;
+      overflow-x: auto;
+      margin: 10px 0 0;
+    }
+
+    /* Security 6-Layer Grid */
+    .sec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 16px;
+    }
+    .sec-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .sec-card h3 {
+      margin: 0 0 8px;
+      font-size: 1.02rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sec-card p {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    /* Quick Start Cards */
+    .qs-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .qs-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .qs-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .qs-head h3 { margin: 0; font-size: 1rem; }
+    .code-block {
+      background: #070b15;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 15px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: #d7e3ff;
+      overflow-x: auto;
+      margin: 0;
+      line-height: 1.55;
+    }
+
+    /* Footer */
+    footer.footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0 48px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      text-align: center;
+    }
+
+    @media (max-width: 720px) {
+      .nav-links { display: none; }
+      .hero { padding: 36px 0 24px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Sticky Top Navigation -->
+  <header class="navbar">
+    <div class="container navbar-inner">
+      <a class="brand" href="#top">
+        <img src="./favicon.svg" alt="GeminiBastionMCP" />
+        <span>GeminiBastionMCP</span>
+        <span class="brand-slug">gemini-bastion-mcp</span>
+      </a>
+      <nav class="nav-links" aria-label="Main Navigation">
+        <a href="#why" data-i18n="nav_why">Why This Exists</a>
+        <a href="#architecture" data-i18n="nav_arch">Architecture</a>
+        <a href="#tools" data-i18n="nav_tools">10 Tools · 1 Gate</a>
+        <a href="#preview" data-i18n="nav_preview">UI Preview</a>
+        <a href="#security" data-i18n="nav_security">6-Layer Security</a>
+        <a href="#quickstart" data-i18n="nav_quickstart">Quick Start</a>
+      </nav>
+      <div class="nav-actions">
+        <button id="lang-toggle-btn" class="btn" type="button" aria-label="Switch Language">EN / 中文</button>
+        <a class="btn btn-primary" href="https://github.com/Kaiserunix/gemini-bastion-mcp" target="_blank" rel="noopener noreferrer">GitHub &nearr;</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top" class="container">
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="badge-row">
+        <span class="badge blue">MCP 2025-11-25 Streamable HTTP</span>
+        <span class="badge green">OAuth 2.1 + PKCE (S256) + DCR</span>
+        <span class="badge">Node &gt;= 22.23.4</span>
+        <span class="badge green">55/55 Vitest Suites Passing</span>
+        <span class="badge amber">MIT License</span>
+      </div>
+      <h1 data-i18n="hero_title">The Self-Hosted OAuth 2.1 MCP Bastion for Web Gemini, Claude &amp; ChatGPT</h1>
+      <p class="hero-subtitle">10 Tools &middot; 1 Approval Gate &middot; OAuth 2.1 PKCE/DCR &middot; Codex SDK &middot; MCP-2 Federation</p>
+      <p class="hero-lead" data-i18n="hero_lead">
+        Turn any browser or mobile AI chat into a sandboxed full-stack coding, background Codex runner, and Cloudflare operations agent — without approval-popup fatigue or gateway secret leakage.
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#quickstart" data-i18n="cta_quickstart">3-Minute Quick Start</a>
+        <a class="btn" href="#tools" data-i18n="cta_tools">Explore 10 Tools</a>
+        <a class="btn" href="https://github.com/Kaiserunix/gemini-bastion-mcp" target="_blank" rel="noopener noreferrer" data-i18n="cta_github">View on GitHub</a>
+      </div>
+      <div class="portal-notice" data-i18n="hero_notice">
+        ℹ️ This GitHub Pages site is the static documentation &amp; interactive architecture showcase portal. The live Streamable HTTP /mcp gateway and /admin PWA run self-hosted on your own Docker host or VPS behind Cloudflare Tunnel / HTTPS.
+      </div>
+    </section>
+
+    <!-- Why This Exists (Comparison Matrix) -->
+    <section id="why" class="section">
+      <div class="section-header">
+        <div class="section-eyebrow" data-i18n="why_eyebrow">Comparison Matrix</div>
+        <h2 class="section-title" data-i18n="why_title">Why GeminiBastionMCP Exists</h2>
+        <p class="section-desc" data-i18n="why_desc">
+          Connecting Web Gemini (gemini.google.com), Claude.ai, or ChatGPT to real repositories and infrastructure usually breaks down on strict OAuth 2.1 DCR handshakes, 40-tool approval popups, or raw secret exposure.
+        </p>
+      </div>
+      <div class="table-wrap">
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th data-i18n="cmp_col_cap">Capability</th>
+              <th>GeminiBastionMCP</th>
+              <th data-i18n="cmp_col_proxy">Generic MCP Proxies (MetaMCP)</th>
+              <th data-i18n="cmp_col_remote">Official Remote MCPs (GitHub/CF)</th>
+              <th data-i18n="cmp_col_local">Local Stdio Shell MCPs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong data-i18n="cmp_r1_k">Web Gemini (gemini.google.com) OAuth 2.1 DCR</strong></td>
+              <td class="hi" data-i18n="cmp_r1_v1">✅ Native (RFC 9728/8414/8707, 16 redirect URIs, 8KB state, 60s token grace rotation)</td>
+              <td data-i18n="cmp_r1_v2">⚠️ Often lacks RFC 8707 resource binding or 8KB state</td>
+              <td data-i18n="cmp_r1_v3">✅ Single-vendor only</td>
+              <td data-i18n="cmp_r1_v4">❌ Desktop stdio only</td>
+            </tr>
+            <tr>
+              <td><strong data-i18n="cmp_r2_k">Web Chat Approval UX</strong></td>
+              <td class="hi" data-i18n="cmp_r2_v1">✅ 10 Tools, 1 Approval Gate (Tools 1–9 safe for Always Allow; only #10 writes externally)</td>
+              <td data-i18n="cmp_r2_v2">❌ Exposes 30–60 granular tools; constant popup fatigue</td>
+              <td data-i18n="cmp_r2_v3">⚠️ Mixed read/write tools</td>
+              <td data-i18n="cmp_r2_v4">❌ Confirm every shell call or run unguarded</td>
+            </tr>
+            <tr>
+              <td><strong data-i18n="cmp_r3_k">Sandboxed Test Execution &amp; Background Codex</strong></td>
+              <td class="hi" data-i18n="cmp_r3_v1">✅ 15s sync exec auto-promoted to SQLite background job + @openai/codex-sdk runner</td>
+              <td data-i18n="cmp_r3_v2">❌ Router only, no workspace sandbox</td>
+              <td data-i18n="cmp_r3_v3">❌ REST API wrapper only, cannot run tests</td>
+              <td data-i18n="cmp_r3_v4">⚠️ Runs on host OS with no background job promotion</td>
+            </tr>
+            <tr>
+              <td><strong data-i18n="cmp_r4_k">Zero Gateway Secret Leakage &amp; Git Snapshots</strong></td>
+              <td class="hi" data-i18n="cmp_r4_v1">✅ UID 1001/1002 split + buildSandboxedEnv() + SecretScrubber + GIT_INDEX_FILE snapshots</td>
+              <td data-i18n="cmp_r4_v2">❌ Depends on downstream server</td>
+              <td data-i18n="cmp_r4_v3">✅ Cloud-hosted</td>
+              <td data-i18n="cmp_r4_v4">❌ Subprocesses inherit host environment secrets</td>
+            </tr>
+            <tr>
+              <td><strong data-i18n="cmp_r5_k">Two-Phase Infrastructure Mutation (Plan &rarr; Apply)</strong></td>
+              <td class="hi" data-i18n="cmp_r5_v1">✅ stage_mutation_plan (15m TTL + rollback snapshot) &rarr; publish_changes</td>
+              <td data-i18n="cmp_r5_v2">❌ Direct write pass-through</td>
+              <td data-i18n="cmp_r5_v3">❌ Immediate external writes</td>
+              <td data-i18n="cmp_r5_v4">❌ None</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Visual Architecture Diagram -->
+    <section id="architecture" class="section">
+      <div class="section-header">
+        <div class="section-eyebrow" data-i18n="arch_eyebrow">System Topology</div>
+        <h2 class="section-title" data-i18n="arch_title">Blast-Radius-Contained Architecture</h2>
+        <p class="section-desc" data-i18n="arch_desc">
+          Stateless Streamable HTTP transport mounted on Hono (/mcp) with strict UID separation between the OAuth/SQLite control plane (UID 1001) and the zero-secret execution sandbox (UID 1002).
+        </p>
+      </div>
+      <div class="arch-box">
+        <div class="arch-grid">
+          <div class="arch-stage">
+            <span class="arch-stage-tag">1. Web &amp; Mobile Clients</span>
+            <h3 data-i18n="arch_s1_title">AI Connectors &amp; Edge</h3>
+            <div class="arch-node">
+              <strong>gemini.google.com</strong>
+              <span data-i18n="arch_s1_n1">Connected Apps via OAuth 2.1 DCR + PKCE (S256)</span>
+            </div>
+            <div class="arch-node">
+              <strong>Claude.ai / ChatGPT / Cursor</strong>
+              <span data-i18n="arch_s1_n2">Stateless Streamable HTTP (/mcp) + RFC 8707</span>
+            </div>
+            <div class="arch-node">
+              <strong>HTTPS Edge / Cloudflare Tunnel</strong>
+              <span data-i18n="arch_s1_n3">Zero exposed host ports in production Docker stack</span>
+            </div>
+          </div>
+
+          <div class="arch-stage stage-gateway">
+            <span class="arch-stage-tag">2. Control Plane (UID 1001: gateway)</span>
+            <h3 data-i18n="arch_s2_title">GeminiBastionMCP Core</h3>
+            <div class="arch-node">
+              <strong>OAuth 2.1 + Token Family Rotation</strong>
+              <span data-i18n="arch_s2_n1">60s refresh grace window + replay theft revocation</span>
+            </div>
+            <div class="arch-node">
+              <strong>SQLite WAL (/data/gateway.db)</strong>
+              <span data-i18n="arch_s2_n2">Mode 0700 owned by UID 1001; inaccessible to worker</span>
+            </div>
+            <div class="arch-node">
+              <strong>SecretScrubber &amp; /admin PWA</strong>
+              <span data-i18n="arch_s2_n3">Redacts tokens across all outputs, logs, artifacts &amp; webhooks</span>
+            </div>
+          </div>
+
+          <div class="arch-stage stage-sandbox">
+            <span class="arch-stage-tag">3. Execution Sandbox (UID 1002: worker)</span>
+            <h3 data-i18n="arch_s3_title">Zero-Secret Workspaces</h3>
+            <div class="arch-node">
+              <strong>/workspaces/{slug}</strong>
+              <span data-i18n="arch_s3_n1">Non-destructive GIT_INDEX_FILE snapshots + L0/L1/L2 validation</span>
+            </div>
+            <div class="arch-node">
+              <strong>buildSandboxedEnv() Exec</strong>
+              <span data-i18n="arch_s3_n2">Strips GH_TOKEN, CLOUDFLARE_*, OAUTH_* from child processes</span>
+            </div>
+            <div class="arch-node">
+              <strong>@openai/codex-sdk Runner</strong>
+              <span data-i18n="arch_s3_n3">codex_readonly / codex_write threads with budget &amp; kill switch</span>
+            </div>
+          </div>
+
+          <div class="arch-stage stage-ext">
+            <span class="arch-stage-tag">4. Single Write Funnel</span>
+            <h3 data-i18n="arch_s4_title">Audited External Targets</h3>
+            <div class="arch-node">
+              <strong>GitHub API (Octokit)</strong>
+              <span data-i18n="arch_s4_n1">Feature-branch PRs, reviews &amp; comments; main/master push blocked</span>
+            </div>
+            <div class="arch-node">
+              <strong>Cloudflare API</strong>
+              <span data-i18n="arch_s4_n2">Read-only inspect vs staged DNS/KV/Workers/Pages mutations</span>
+            </div>
+            <div class="arch-node">
+              <strong>Downstream MCP-2 (ops_net)</strong>
+              <span data-i18n="arch_s4_n3">Sidecar federation (e.g. ops-ssh) with readonly/mutating policy</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive 10 Tools, 1 Approval Gate Explorer -->
+    <section id="tools" class="section">
+      <div class="section-header">
+        <div class="section-eyebrow" data-i18n="tools_eyebrow">Interactive Contract Explorer</div>
+        <h2 class="section-title" data-i18n="tools_title">10 Tools, 1 Approval Gate</h2>
+        <p class="section-desc" data-i18n="tools_desc">
+          Filter the 10-tool surface by permission tier. Configure Tools 1–9 as "Always Allow" in your AI client for zero-popup autonomous exploration, coding, and staging — keeping Tool #10 (publish_changes) as your single human-in-the-loop approval gate.
+        </p>
+      </div>
+
+      <div class="filter-bar" role="tablist" aria-label="Tool Tier Filter">
+        <button class="filter-pill active" type="button" data-filter="all" data-i18n="filter_all">All 10 Tools</button>
+        <button class="filter-pill" type="button" data-filter="tier-1" data-i18n="filter_t1">🟢 Tier 1: Always Allow (1–8)</button>
+        <button class="filter-pill" type="button" data-filter="tier-2" data-i18n="filter_t2">🟡 Tier 2: Stage Plan (9)</button>
+        <button class="filter-pill" type="button" data-filter="tier-3" data-i18n="filter_t3">🔴 Tier 3: Single Write Gate (10)</button>
+      </div>
+
+      <div id="tools-grid" class="tools-grid"></div>
+    </section>
+
+    <!-- Interactive UI Preview Tabs -->
+    <section id="preview" class="section">
+      <div class="section-header">
+        <div class="section-eyebrow" data-i18n="prev_eyebrow">Built-In Web Interfaces</div>
+        <h2 class="section-title" data-i18n="prev_title">Interactive UI Preview: GET / Portal &amp; /admin Cockpit</h2>
+        <p class="section-desc" data-i18n="prev_desc">
+          Toggle between the zero-leakage Public Gateway Portal served at GET / and the mobile-installable Operator Cockpit PWA served at /admin.
+        </p>
+      </div>
+
+      <div class="preview-tabs">
+        <div class="preview-tab-group">
+          <button class="btn btn-primary" type="button" data-preview-tab="portal" id="tab-btn-portal" data-i18n="prev_tab_portal">🌐 GET / Public Gateway Portal</button>
+          <button class="btn" type="button" data-preview-tab="admin" id="tab-btn-admin" data-i18n="prev_tab_admin">📱 /admin Mobile Operator Cockpit</button>
+        </div>
+        <span class="preview-label" data-i18n="prev_static_badge">Static Interactive Preview (No Live Backend Connected)</span>
+      </div>
+
+      <!-- Pane 1: GET / Public Gateway Portal Mockup -->
+      <div id="preview-pane-portal" class="preview-pane active">
+        <div class="mockup-window">
+          <div class="mockup-bar">
+            <div class="mockup-dots">
+              <span style="background:#ef4444;"></span>
+              <span style="background:#f59e0b;"></span>
+              <span style="background:#10b981;"></span>
+            </div>
+            <span>GET https://mcp.example.com/ (Zero Private Data Leakage)</span>
+            <span>CSP: sha256-strict</span>
+          </div>
+          <div class="mockup-body">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px;padding:10px 14px;background:#131a2e;border:1px solid #233054;border-radius:12px;">
+              <div style="display:flex;align-items:center;gap:10px;font-weight:700;">
+                <span class="badge green">● ONLINE</span>
+                <span>GeminiBastionMCP</span>
+              </div>
+              <span class="btn" style="padding:6px 12px;font-size:0.8rem;">Operator /admin &rarr;</span>
+            </div>
+            <div class="mock-card">
+              <div style="font-size:0.82rem;font-weight:700;color:#93c5fd;text-transform:uppercase;margin-bottom:8px;">MCP Streamable HTTP Endpoint</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input id="mock-mcp-url" type="text" readonly value="https://mcp.example.com/mcp" style="flex:1;min-width:220px;padding:9px 12px;border-radius:8px;border:1px solid #233054;background:#0f1628;color:#e6ecff;font-family:var(--mono);font-size:0.85rem;" aria-label="Sample MCP Endpoint" />
+                <button class="btn btn-primary" type="button" data-copy-target="mock-mcp-url">Copy</button>
+              </div>
+              <div style="margin-top:10px;font-size:0.8rem;color:var(--muted);font-family:var(--mono);">
+                ✓ /.well-known/oauth-authorization-server &middot; ✓ /.well-known/oauth-protected-resource &middot; ✓ SQLite WAL: Ready
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+              <span class="badge green">🟢 workspace_manage</span>
+              <span class="badge green">🟢 code_explore</span>
+              <span class="badge green">🟢 code_patch</span>
+              <span class="badge green">🟢 workspace_exec</span>
+              <span class="badge green">🟢 dispatch_runner</span>
+              <span class="badge green">🟢 job_status</span>
+              <span class="badge green">🟢 github_inspect</span>
+              <span class="badge green">🟢 infra_inspect</span>
+              <span class="badge amber">🟡 stage_mutation_plan</span>
+              <span class="badge" style="border-color:rgba(239,68,68,0.6);color:#fecaca;">🔴 publish_changes (Single Write Gate)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pane 2: /admin Mobile Operator Cockpit Mockup -->
+      <div id="preview-pane-admin" class="preview-pane">
+        <div class="mockup-window">
+          <div class="mockup-bar">
+            <div class="mockup-dots">
+              <span style="background:#ef4444;"></span>
+              <span style="background:#f59e0b;"></span>
+              <span style="background:#10b981;"></span>
+            </div>
+            <span>GET https://mcp.example.com/admin (Authenticated Operator Console PWA)</span>
+            <span>SSE Live Stream ●</span>
+          </div>
+          <div class="mockup-body">
+            <div class="mock-kpi-grid">
+              <div class="mock-kpi">
+                <div class="mock-kpi-label">Active Jobs</div>
+                <div class="mock-kpi-val" style="color:#93c5fd;">1 <span style="font-size:0.75rem;color:#10b981;">● running</span></div>
+              </div>
+              <div class="mock-kpi">
+                <div class="mock-kpi-label">Staged Plans</div>
+                <div class="mock-kpi-val" style="color:#fde68a;">1 <span style="font-size:0.75rem;color:var(--muted);">14m TTL</span></div>
+              </div>
+              <div class="mock-kpi">
+                <div class="mock-kpi-label">Workspaces</div>
+                <div class="mock-kpi-val" style="color:#86efac;">3 <span style="font-size:0.75rem;color:var(--muted);">synced</span></div>
+              </div>
+              <div class="mock-kpi">
+                <div class="mock-kpi-label">OAuth Sessions</div>
+                <div class="mock-kpi-val">2 <span style="font-size:0.75rem;color:var(--muted);">families</span></div>
+              </div>
+            </div>
+
+            <div class="mock-card">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <div>
+                  <strong style="font-size:0.92rem;">acme-api &middot; codex_write</strong>
+                  <div style="font-family:var(--mono);font-size:0.76rem;color:var(--muted);">job_9f42c1 &middot; Checkpoint: cp_20261121_01 &middot; Tokens: 14,820</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <span class="badge blue">RUNNING</span>
+                  <button id="mock-toggle-log-btn" class="btn" type="button" style="padding:4px 10px;font-size:0.76rem;">Expand / Collapse</button>
+                </div>
+              </div>
+              <pre id="mock-job-log" class="mock-pre">Objective: Refactor rate limiter middleware and run L0/L1 vitest suite
+---
+[12checkpoint] Created non-destructive GIT_INDEX_FILE snapshot refs/mcp-checkpoints/cp_20261121_01
+[13 codex] Applied atomic hunk to src/auth/rateLimiter.ts
+[14 validate] L0 tsc --noEmit passed (0 errors) | L1 vitest passed (18/18 tests)</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6-Layer Security & Guardrails -->
+    <section id="security" class="section">
+      <div class="section-header">
+        <div class="section-eyebrow" data-i18n="sec_eyebrow">Defense-in-Depth</div>
+        <h2 class="section-title" data-i18n="sec_title">6-Layer Security &amp; Blast-Radius Guardrails</h2>
+        <p class="section-desc" data-i18n="sec_desc">
+          Engineered so you can safely connect Web AI clients to real GitHub repositories, Cloudflare accounts, and internal infrastructure.
+        </p>
+      </div>
+      <div class="sec-grid">
+        <article class="sec-card">
+          <h3 data-i18n="sec_1_t">🔒 1. Zero Gateway Secret Leakage</h3>
+          <p data-i18n="sec_1_d">buildSandboxedEnv() strips GH_TOKEN, CLOUDFLARE_*, OAUTH_SIGNING_SECRET, and ADMIN_PASSWORD_HASH from all workspace subprocesses. SecretScrubber redacts credentials across all MCP outputs, logs, artifacts, and webhooks.</p>
+        </article>
+        <article class="sec-card">
+          <h3 data-i18n="sec_2_t">🧱 2. Linux Dual-UID Isolation</h3>
+          <p data-i18n="sec_2_d">In Docker production, gateway runs as UID 1001 owning /data (mode 0700 SQLite WAL DB &amp; artifacts), while workspace commands and Codex execute as UID 1002 (worker) with zero access to /data.</p>
+        </article>
+        <article class="sec-card">
+          <h3 data-i18n="sec_3_t">⏪ 3. Non-Destructive GIT_INDEX_FILE Snapshots</h3>
+          <p data-i18n="sec_3_d">Before every code_patch or codex_write run, the gateway snapshots tracked and untracked files into refs/mcp-checkpoints/* using a temporary GIT_INDEX_FILE without touching your real .git/index or HEAD.</p>
+        </article>
+        <article class="sec-card">
+          <h3 data-i18n="sec_4_t">🚦 4. Main-Branch Block &amp; Two-Phase Mutations</h3>
+          <p data-i18n="sec_4_d">Direct pushes to main, master, or default_branch are physically rejected. Cloudflare and downstream MCP-2 mutations must be staged via stage_mutation_plan (15m TTL + rollback payload) before publish_changes executes them.</p>
+        </article>
+        <article class="sec-card">
+          <h3 data-i18n="sec_5_t">🛡️ 5. Untrusted Content Boundary</h3>
+          <p data-i18n="sec_5_d">External text from github_inspect (PR bodies, comments, Actions logs) and infra_inspect (Worker tail logs, downstream MCP output) is wrapped in explicit untrusted-data boundaries to resist indirect prompt injection.</p>
+        </article>
+        <article class="sec-card">
+          <h3 data-i18n="sec_6_t">🔑 6. OAuth 2.1 Token Family Theft Detection</h3>
+          <p data-i18n="sec_6_d">Implements PKCE (S256), RFC 8707 Resource Indicators, and refresh token family rotation with a 60-second grace window for concurrent retries — revoking the entire family immediately on post-grace replay.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- 3-Minute Quick Start -->
+    <section id="quickstart" class="section">
+      <div class="section-header">
+        <div class="section-eyebrow" data-i18n="qs_eyebrow">Deploy &amp; Connect</div>
+        <h2 class="section-title" data-i18n="qs_title">3-Minute Quick Start</h2>
+        <p class="section-desc" data-i18n="qs_desc">
+          Generate a Docker-Compose-safe scrypt password hash, launch the container stack, and paste your /mcp endpoint into Web Gemini, Claude.ai, or ChatGPT.
+        </p>
+      </div>
+
+      <div class="qs-grid">
+        <div class="qs-card">
+          <div class="qs-head">
+            <h3 data-i18n="qs_step1">1. Generate Operator Password Hash (scrypt:&lt;salt&gt;:&lt;hex&gt;) &amp; Signing Secret</h3>
+            <button class="btn" type="button" data-copy-target="cmd-step1" data-i18n="btn_copy">Copy</button>
+          </div>
+          <pre id="cmd-step1" class="code-block">node -e 'const c=require("node:crypto"),s=c.randomBytes(16).toString("hex");console.log(`ADMIN_PASSWORD_HASH=scrypt:${s}:${c.scryptSync(process.argv[1],s,32,{N:16384,r:8,p:1}).toString("hex")}`)' 'your-strong-operator-password'
+node -e 'console.log("OAUTH_SIGNING_SECRET=" + require("node:crypto").randomBytes(32).toString("hex"))'</pre>
+        </div>
+
+        <div class="qs-card">
+          <div class="qs-head">
+            <h3 data-i18n="qs_step2">2. Configure .env &amp; Start Docker Compose Stack</h3>
+            <button class="btn" type="button" data-copy-target="cmd-step2" data-i18n="btn_copy">Copy</button>
+          </div>
+          <pre id="cmd-step2" class="code-block">git clone https://github.com/Kaiserunix/gemini-bastion-mcp.git
+cd gemini-bastion-mcp
+cp .env.example .env
+# Edit .env: set PUBLIC_DOMAIN, ADMIN_PASSWORD_HASH, OAUTH_SIGNING_SECRET, GH_TOKEN, etc.
+docker compose -f docker/docker-compose.yml up -d --build</pre>
+        </div>
+
+        <div class="qs-card">
+          <div class="qs-head">
+            <h3 data-i18n="qs_step3">3. Connect Web Gemini (gemini.google.com), Claude.ai &amp; ChatGPT</h3>
+            <button class="btn" type="button" data-copy-target="cmd-step3" data-i18n="btn_copy">Copy</button>
+          </div>
+          <pre id="cmd-step3" class="code-block"># MCP Streamable HTTP Endpoint (OAuth 2.1 DCR auto-discovers /.well-known/*):
+https://mcp.yourdomain.com/mcp
+
+# Recommended Client Tool Permission Policy:
+# - Tools 1..9 (workspace_manage .. stage_mutation_plan) -> Always Allow (0 popups)
+# - Tool 10 (publish_changes)                            -> Ask Before Running (Single Write Gate)</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>
+        <strong>GeminiBastionMCP</strong> (<code>gemini-bastion-mcp</code>) &middot;
+        <a href="https://github.com/Kaiserunix/gemini-bastion-mcp" target="_blank" rel="noopener noreferrer">GitHub Repository</a> &middot;
+        Released under the MIT License.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var TOOLS = [
+        {
+          num: 1,
+          name: 'workspace_manage',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: false,
+          actions: 'list | sync_github | init_cf_ops | list_checkpoints | rollback',
+          descEn: 'Clone/sync GitHub repos into /workspaces/{slug}, detect stack & AGENTS.md/CLAUDE.md playbooks, list or rollback git snapshots.',
+          descZh: '克隆或同步 GitHub 仓库至隔离沙盒 /workspaces/{slug}，自动识别技术栈与 AGENTS.md/CLAUDE.md 规范，管理与回滚 Git 快照。'
+        },
+        {
+          num: 2,
+          name: 'code_explore',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: true,
+          destructiveHint: false,
+          openWorldHint: false,
+          actions: 'pack | search | ast | read_lines | read_artifact | git_diff',
+          descEn: 'Token-budgeted repository packing, fast regex search (ripgrep), structural AST query, line-range file reader, and paginated artifact reader.',
+          descZh: '支持 Token 预算的仓库打包、正则搜索 (ripgrep)、AST 结构化查询、行范围读取及超大输出 Artifact 分页读取。'
+        },
+        {
+          num: 3,
+          name: 'code_patch',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: false,
+          actions: 'patch (hunks + line_hint) | create_or_overwrite | delete_file + L0/L1/L2',
+          descEn: 'Atomic multi-file patching with automatic pre-patch GIT_INDEX_FILE checkpoint and L0/L1/L2 lint/typecheck/test verification & auto-rollback.',
+          descZh: '多文件原子补丁编辑，自动创建修改前 GIT_INDEX_FILE 快照，并执行 L0/L1/L2 语法/类型/单测流水线校验与失败自动回滚。'
+        },
+        {
+          num: 4,
+          name: 'workspace_exec',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: false,
+          actions: 'command | args | wait_ms (<=15000) -> auto-promotes to job_id',
+          descEn: 'Executes commands inside /workspaces/{slug} with zero gateway secrets. Commands running past wait_ms seamlessly promote to background SQLite jobs.',
+          descZh: '在零网关密钥白名单环境中执行沙盒命令；超过 wait_ms (最长 15s) 未结束的进程无损自动晋升为后台 SQLite 异步任务。'
+        },
+        {
+          num: 5,
+          name: 'dispatch_runner',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: false,
+          actions: 'codex_readonly | codex_write | shell_task (resume_thread_id)',
+          descEn: 'Dispatches asynchronous @openai/codex-sdk threads or long background shell tasks with pre-run git checkpoint, duration/token budgets, and webhook notification.',
+          descZh: '派发 @openai/codex-sdk 异步智能体线程（只读分析或写工作区）及长耗时 Shell 任务，支持线程续接、预算控制与完成 Webhook 通知。'
+        },
+        {
+          num: 6,
+          name: 'job_status',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: true,
+          destructiveHint: false,
+          openWorldHint: false,
+          actions: 'job_id | since_seq | cancel: true (SIGTERM -> SIGKILL)',
+          descEn: 'Polls incremental job events, token usage, live git status -sb, final report, or triggers real AbortController + process-group cancellation.',
+          descZh: '增量轮询后台任务事件流、Token 消耗、实时 git status -sb 与最终报告，支持一键终止整个进程组。'
+        },
+        {
+          num: 7,
+          name: 'github_inspect',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: true,
+          destructiveHint: false,
+          openWorldHint: true,
+          actions: 'pr | issue | actions_run_logs (untrusted boundary wrapped)',
+          descEn: 'Read-only GitHub PR metadata/diffs/reviews, Issue threads, and failed GitHub Actions step logs wrapped in untrusted-content boundaries.',
+          descZh: '只读获取 GitHub PR 详情/差异/评审、Issue 讨论串及失败的 Actions 构建日志，全部包裹不可信数据边界以防御提示词注入。'
+        },
+        {
+          num: 8,
+          name: 'infra_inspect',
+          tier: 'tier-1',
+          tierLabelEn: '🟢 Tier 1 · Always Allow',
+          tierLabelZh: '🟢 Tier 1 · 始终允许',
+          readOnlyHint: true,
+          destructiveHint: false,
+          openWorldHint: true,
+          actions: 'zones | dns_records | workers | pages | kv | d1 | downstream_call',
+          descEn: 'Read-only Cloudflare inspection (DNS, Workers, Pages, KV, D1, WAF, tail logs) plus downstream MCP-2 federation strictly limited to readonlyTools.',
+          descZh: '只读巡检 Cloudflare (DNS/Workers/Pages/KV/D1/WAF/日志) 及下游 MCP-2 联邦服务（严格限制仅允许调用 readonlyTools）。'
+        },
+        {
+          num: 9,
+          name: 'stage_mutation_plan',
+          tier: 'tier-2',
+          tierLabelEn: '🟡 Tier 2 · Stage Only (0 External Writes)',
+          tierLabelZh: '🟡 Tier 2 · 预演暂存（零外部写入）',
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: false,
+          actions: 'cloudflare_mutation | downstream_mcp_mutation -> 15m TTL plan_id',
+          descEn: 'Captures live state into a rollback_payload snapshot, generates a human-readable diff, and stores a 15-minute TTL plan_id in SQLite without executing external writes.',
+          descZh: '抓取线上当前状态生成回滚快照与可读 Diff，在 SQLite 中生成 15 分钟有效期的 plan_id，不执行任何外部真实写入。'
+        },
+        {
+          num: 10,
+          name: 'publish_changes',
+          tier: 'tier-3',
+          tierLabelEn: '🔴 Tier 3 · Single External Write Gate',
+          tierLabelZh: '🔴 Tier 3 · 唯一外部写出口（人工审批闸门）',
+          readOnlyHint: false,
+          destructiveHint: true,
+          openWorldHint: true,
+          actions: 'github_pr | github_pr_review | github_comment | cloudflare_*_deploy | execute_staged_plan | rollback_plan',
+          descEn: 'The ONLY external write exit in the entire gateway. Blocks direct pushes to main/master, scans diffs for secrets, executes or rolls back staged plans, and writes audit logs.',
+          descZh: '整个网关唯一的外部写操作总闸门！物理拦截直推 main/master、推送前扫描密钥、执行或回滚已暂存变更计划，并全量记录审计日志。'
+        }
+      ];
+
+      var I18N = {
+        en: {
+          nav_why: 'Why This Exists',
+          nav_arch: 'Architecture',
+          nav_tools: '10 Tools · 1 Gate',
+          nav_preview: 'UI Preview',
+          nav_security: '6-Layer Security',
+          nav_quickstart: 'Quick Start',
+          hero_title: 'The Self-Hosted OAuth 2.1 MCP Bastion for Web Gemini, Claude & ChatGPT',
+          hero_lead: 'Turn any browser or mobile AI chat into a sandboxed full-stack coding, background Codex runner, and Cloudflare operations agent — without approval-popup fatigue or gateway secret leakage.',
+          cta_quickstart: '3-Minute Quick Start',
+          cta_tools: 'Explore 10 Tools',
+          cta_github: 'View on GitHub',
+          hero_notice: 'ℹ️ This GitHub Pages site is the static documentation & interactive architecture showcase portal. The live Streamable HTTP /mcp gateway and /admin PWA run self-hosted on your own Docker host or VPS behind Cloudflare Tunnel / HTTPS.',
+          why_eyebrow: 'Comparison Matrix',
+          why_title: 'Why GeminiBastionMCP Exists',
+          why_desc: 'Connecting Web Gemini (gemini.google.com), Claude.ai, or ChatGPT to real repositories and infrastructure usually breaks down on strict OAuth 2.1 DCR handshakes, 40-tool approval popups, or raw secret exposure.',
+          cmp_col_cap: 'Capability',
+          cmp_col_proxy: 'Generic MCP Proxies (MetaMCP)',
+          cmp_col_remote: 'Official Remote MCPs (GitHub/CF)',
+          cmp_col_local: 'Local Stdio Shell MCPs',
+          cmp_r1_k: 'Web Gemini (gemini.google.com) OAuth 2.1 DCR',
+          cmp_r1_v1: '✅ Native (RFC 9728/8414/8707, 16 redirect URIs, 8KB state, 60s token grace rotation)',
+          cmp_r1_v2: '⚠️ Often lacks RFC 8707 resource binding or 8KB state',
+          cmp_r1_v3: '✅ Single-vendor only',
+          cmp_r1_v4: '❌ Desktop stdio only',
+          cmp_r2_k: 'Web Chat Approval UX',
+          cmp_r2_v1: '✅ 10 Tools, 1 Approval Gate (Tools 1–9 safe for Always Allow; only #10 writes externally)',
+          cmp_r2_v2: '❌ Exposes 30–60 granular tools; constant popup fatigue',
+          cmp_r2_v3: '⚠️ Mixed read/write tools',
+          cmp_r2_v4: '❌ Confirm every shell call or run unguarded',
+          cmp_r3_k: 'Sandboxed Test Execution & Background Codex',
+          cmp_r3_v1: '✅ 15s sync exec auto-promoted to SQLite background job + @openai/codex-sdk runner',
+          cmp_r3_v2: '❌ Router only, no workspace sandbox',
+          cmp_r3_v3: '❌ REST API wrapper only, cannot run tests',
+          cmp_r3_v4: '⚠️ Runs on host OS with no background job promotion',
+          cmp_r4_k: 'Zero Gateway Secret Leakage & Git Snapshots',
+          cmp_r4_v1: '✅ UID 1001/1002 split + buildSandboxedEnv() + SecretScrubber + GIT_INDEX_FILE snapshots',
+          cmp_r4_v2: '❌ Depends on downstream server',
+          cmp_r4_v3: '✅ Cloud-hosted',
+          cmp_r4_v4: '❌ Subprocesses inherit host environment secrets',
+          cmp_r5_k: 'Two-Phase Infrastructure Mutation (Plan → Apply)',
+          cmp_r5_v1: '✅ stage_mutation_plan (15m TTL + rollback snapshot) → publish_changes',
+          cmp_r5_v2: '❌ Direct write pass-through',
+          cmp_r5_v3: '❌ Immediate external writes',
+          cmp_r5_v4: '❌ None',
+          arch_eyebrow: 'System Topology',
+          arch_title: 'Blast-Radius-Contained Architecture',
+          arch_desc: 'Stateless Streamable HTTP transport mounted on Hono (/mcp) with strict UID separation between the OAuth/SQLite control plane (UID 1001) and the zero-secret execution sandbox (UID 1002).',
+          arch_s1_title: 'AI Connectors & Edge',
+          arch_s1_n1: 'Connected Apps via OAuth 2.1 DCR + PKCE (S256)',
+          arch_s1_n2: 'Stateless Streamable HTTP (/mcp) + RFC 8707',
+          arch_s1_n3: 'Zero exposed host ports in production Docker stack',
+          arch_s2_title: 'GeminiBastionMCP Core',
+          arch_s2_n1: '60s refresh grace window + replay theft revocation',
+          arch_s2_n2: 'Mode 0700 owned by UID 1001; inaccessible to worker',
+          arch_s2_n3: 'Redacts tokens across all outputs, logs, artifacts & webhooks',
+          arch_s3_title: 'Zero-Secret Workspaces',
+          arch_s3_n1: 'Non-destructive GIT_INDEX_FILE snapshots + L0/L1/L2 validation',
+          arch_s3_n2: 'Strips GH_TOKEN, CLOUDFLARE_*, OAUTH_* from child processes',
+          arch_s3_n3: 'codex_readonly / codex_write threads with budget & kill switch',
+          arch_s4_title: 'Audited External Targets',
+          arch_s4_n1: 'Feature-branch PRs, reviews & comments; main/master push blocked',
+          arch_s4_n2: 'Read-only inspect vs staged DNS/KV/Workers/Pages mutations',
+          arch_s4_n3: 'Sidecar federation (e.g. ops-ssh) with readonly/mutating policy',
+          tools_eyebrow: 'Interactive Contract Explorer',
+          tools_title: '10 Tools, 1 Approval Gate',
+          tools_desc: 'Filter the 10-tool surface by permission tier. Configure Tools 1–9 as "Always Allow" in your AI client for zero-popup autonomous exploration, coding, and staging — keeping Tool #10 (publish_changes) as your single human-in-the-loop approval gate.',
+          filter_all: 'All 10 Tools',
+          filter_t1: '🟢 Tier 1: Always Allow (1–8)',
+          filter_t2: '🟡 Tier 2: Stage Plan (9)',
+          filter_t3: '🔴 Tier 3: Single Write Gate (10)',
+          prev_eyebrow: 'Built-In Web Interfaces',
+          prev_title: 'Interactive UI Preview: GET / Portal & /admin Cockpit',
+          prev_desc: 'Toggle between the zero-leakage Public Gateway Portal served at GET / and the mobile-installable Operator Cockpit PWA served at /admin.',
+          prev_tab_portal: '🌐 GET / Public Gateway Portal',
+          prev_tab_admin: '📱 /admin Mobile Operator Cockpit',
+          prev_static_badge: 'Static Interactive Preview (No Live Backend Connected)',
+          sec_eyebrow: 'Defense-in-Depth',
+          sec_title: '6-Layer Security & Blast-Radius Guardrails',
+          sec_desc: 'Engineered so you can safely connect Web AI clients to real GitHub repositories, Cloudflare accounts, and internal infrastructure.',
+          sec_1_t: '🔒 1. Zero Gateway Secret Leakage',
+          sec_1_d: 'buildSandboxedEnv() strips GH_TOKEN, CLOUDFLARE_*, OAUTH_SIGNING_SECRET, and ADMIN_PASSWORD_HASH from all workspace subprocesses. SecretScrubber redacts credentials across all MCP outputs, logs, artifacts, and webhooks.',
+          sec_2_t: '🧱 2. Linux Dual-UID Isolation',
+          sec_2_d: 'In Docker production, gateway runs as UID 1001 owning /data (mode 0700 SQLite WAL DB & artifacts), while workspace commands and Codex execute as UID 1002 (worker) with zero access to /data.',
+          sec_3_t: '⏪ 3. Non-Destructive GIT_INDEX_FILE Snapshots',
+          sec_3_d: 'Before every code_patch or codex_write run, the gateway snapshots tracked and untracked files into refs/mcp-checkpoints/* using a temporary GIT_INDEX_FILE without touching your real .git/index or HEAD.',
+          sec_4_t: '🚦 4. Main-Branch Block & Two-Phase Mutations',
+          sec_4_d: 'Direct pushes to main, master, or default_branch are physically rejected. Cloudflare and downstream MCP-2 mutations must be staged via stage_mutation_plan (15m TTL + rollback payload) before publish_changes executes them.',
+          sec_5_t: '🛡️ 5. Untrusted Content Boundary',
+          sec_5_d: 'External text from github_inspect (PR bodies, comments, Actions logs) and infra_inspect (Worker tail logs, downstream MCP output) is wrapped in explicit untrusted-data boundaries to resist indirect prompt injection.',
+          sec_6_t: '🔑 6. OAuth 2.1 Token Family Theft Detection',
+          sec_6_d: 'Implements PKCE (S256), RFC 8707 Resource Indicators, and refresh token family rotation with a 60-second grace window for concurrent retries — revoking the entire family immediately on post-grace replay.',
+          qs_eyebrow: 'Deploy & Connect',
+          qs_title: '3-Minute Quick Start',
+          qs_desc: 'Generate a Docker-Compose-safe scrypt password hash, launch the container stack, and paste your /mcp endpoint into Web Gemini, Claude.ai, or ChatGPT.',
+          qs_step1: '1. Generate Operator Password Hash (scrypt:<salt>:<hex>) & Signing Secret',
+          qs_step2: '2. Configure .env & Start Docker Compose Stack',
+          qs_step3: '3. Connect Web Gemini (gemini.google.com), Claude.ai & ChatGPT',
+          btn_copy: 'Copy'
+        },
+        zh: {
+          nav_why: '核心对比',
+          nav_arch: '系统架构',
+          nav_tools: '10 工具 · 1 闸门',
+          nav_preview: '界面预览',
+          nav_security: '六层安全护栏',
+          nav_quickstart: '3 分钟上手',
+          hero_title: '专为 Web Gemini、Claude 与 ChatGPT 打造的自托管 OAuth 2.1 MCP 研发运维堡垒',
+          hero_lead: '将网页端或手机端 AI 对话直接升级为拥有隔离沙盒工作区、Codex 异步引擎与 Cloudflare 管控能力的全栈智能体——彻底终结授权弹窗地狱与密钥泄漏风险。',
+          cta_quickstart: '3 分钟极速部署',
+          cta_tools: '探索 10 大复合工具',
+          cta_github: '访问 GitHub 仓库',
+          hero_notice: 'ℹ️ 当前 GitHub Pages 页面为静态文档与交互式架构展示门户。真实的 Streamable HTTP /mcp 网关与 /admin 移动控制台需通过 Docker 或 VPS 自托管运行在您的 HTTPS / Cloudflare Tunnel 域名后。',
+          why_eyebrow: '横向能力对比',
+          why_title: '为什么需要 GeminiBastionMCP？',
+          why_desc: '将 Web Gemini (gemini.google.com)、Claude.ai 或 ChatGPT 连接到真实代码库和基础设施时，往往卡在严苛的 OAuth 2.1 DCR 握手、几十个工具的授权弹窗轰炸、或环境变量密钥裸奔。',
+          cmp_col_cap: '能力维度',
+          cmp_col_proxy: '通用聚合网关 (如 MetaMCP)',
+          cmp_col_remote: '官方远程 MCP (GitHub/CF)',
+          cmp_col_local: '本地 Stdio Shell MCP',
+          cmp_r1_k: 'Web Gemini (gemini.google.com) OAuth 2.1 DCR 接入',
+          cmp_r1_v1: '✅ 原生完美支持 (RFC 9728/8414/8707、16 Redirect URIs、8KB State、60s 宽限期轮换)',
+          cmp_r1_v2: '⚠️ 多数缺少 RFC 8707 资源绑定或大 State 支持',
+          cmp_r1_v3: '✅ 仅限单一平台',
+          cmp_r1_v4: '❌ 仅限本地桌面端 Stdio',
+          cmp_r2_k: 'Web 聊天端工具授权弹窗体验',
+          cmp_r2_v1: '✅ 10 工具收敛 + 唯一写出口 (前 9 个可设始终允许零弹窗，仅 #10 需人工审批)',
+          cmp_r2_v2: '❌ 暴露 30~60 个细粒度工具，授权弹窗点到手软',
+          cmp_r2_v3: '⚠️ 读写工具混杂',
+          cmp_r2_v4: '❌ 每次执行均需确认或完全裸奔',
+          cmp_r3_k: '隔离沙盒跑测试 + Codex 异步后台委托',
+          cmp_r3_v1: '✅ 15 秒同步执行超时自动转 SQLite 后台 Job + 原生 @openai/codex-sdk 引擎',
+          cmp_r3_v2: '❌ 仅做协议转发，无代码沙盒',
+          cmp_r3_v3: '❌ 仅封装 REST API，无法跑单测与构建',
+          cmp_r3_v4: '⚠️ 直接跑在宿主机，无后台 Job 自动晋升',
+          cmp_r4_k: '零网关密钥泄漏与 Git 无损快照',
+          cmp_r4_v1: '✅ 双 UID (1001/1002) 隔离 + buildSandboxedEnv() + 全局脱敏 + GIT_INDEX_FILE 快照',
+          cmp_r4_v2: '❌ 取决于下游服务，无统一沙盒擦除',
+          cmp_r4_v3: '✅ 云端托管',
+          cmp_r4_v4: '❌ 子进程直接继承宿主机全量环境变量',
+          cmp_r5_k: '两阶段基础设施变更 (Plan → Apply)',
+          cmp_r5_v1: '✅ stage_mutation_plan (15m TTL + 回滚快照) → publish_changes',
+          cmp_r5_v2: '❌ 直接透传写操作',
+          cmp_r5_v3: '❌ 直接执行外部写入',
+          cmp_r5_v4: '❌ 无',
+          arch_eyebrow: '系统拓扑',
+          arch_title: '爆炸半径受控的四层隔离架构',
+          arch_desc: '基于 Hono 挂载无状态 Streamable HTTP (/mcp)，在 OAuth/SQLite 控制面 (UID 1001) 与零密钥代码执行沙盒 (UID 1002) 之间实施严格的权限与文件系统隔离。',
+          arch_s1_title: 'AI 客户端与边缘隧道',
+          arch_s1_n1: '通过 OAuth 2.1 DCR + PKCE (S256) 原生连接 Connected Apps',
+          arch_s1_n2: '无状态 Streamable HTTP (/mcp) + RFC 8707 资源指示符',
+          arch_s1_n3: '生产 Docker 栈零宿主机端口暴露，仅经由 HTTPS 隧道入站',
+          arch_s2_title: 'GeminiBastionMCP 控制核心',
+          arch_s2_n1: '60 秒并发刷新宽限期 + 令牌重放盗用整族熔断',
+          arch_s2_n2: '0700 权限归属 UID 1001，worker 进程零读写权限',
+          arch_s2_n3: '对所有 MCP 响应、日志、Artifact 与 Webhook 实施全局脱敏',
+          arch_s3_title: '零密钥工作区沙盒',
+          arch_s3_n1: '非破坏性 GIT_INDEX_FILE 快照 + L0/L1/L2 自动验证回滚',
+          arch_s3_n2: '彻底剥离 GH_TOKEN、CLOUDFLARE_*、OAUTH_* 等敏感变量',
+          arch_s3_n3: 'codex_readonly / codex_write 线程续接、预算控制与进程组强杀',
+          arch_s4_title: '受审计的唯一外部写通道',
+          arch_s4_n1: '仅允许非默认分支提 PR/评审/评论；物理拦截直推 main/master',
+          arch_s4_n2: '只读 Token 巡检 vs 两阶段暂存 DNS/KV/Workers/Pages 变更',
+          arch_s4_n3: '内网 Sidecar 联邦 (如 ops-ssh)，强制分离只读与变更策略',
+          tools_eyebrow: '交互式工具契约浏览器',
+          tools_title: '10 大复合工具 · 1 道审批总闸门',
+          tools_desc: '按权限层级筛选 10 个标准工具。在 AI 客户端中将工具 1–9 设为「始终允许 (Always Allow)」即可零弹窗丝滑探索、改码、跑单测与暂存计划；仅将第 10 个工具 (publish_changes) 留作人工确认的唯一出闸口。',
+          filter_all: '全部 10 个工具',
+          filter_t1: '🟢 Tier 1: 始终允许 (1–8)',
+          filter_t2: '🟡 Tier 2: 变更预演暂存 (9)',
+          filter_t3: '🔴 Tier 3: 唯一外部写闸门 (10)',
+          prev_eyebrow: '内置双 Web 界面',
+          prev_title: '交互式界面预览：GET / 公开门户 & /admin 移动座舱',
+          prev_desc: '点击切换查看根路径 GET / 提供的零隐私泄漏公开状态门户，以及 /admin 提供的移动端优先 PWA 运维指挥座舱。',
+          prev_tab_portal: '🌐 GET / 公开网关状态门户',
+          prev_tab_admin: '📱 /admin 移动端运维指挥座舱',
+          prev_static_badge: '静态交互预览（未连接真实后端）',
+          sec_eyebrow: '纵深防御体系',
+          sec_title: '六层硬核安全与防误操作护栏',
+          sec_desc: '专为连接真实生产 GitHub 仓库、Cloudflare 账号与内网基础设施而设计。',
+          sec_1_t: '🔒 1. 零网关密钥泄漏 (Zero Secret Leakage)',
+          sec_1_d: 'buildSandboxedEnv() 从所有工作区子进程中彻底剥离 GH_TOKEN、CLOUDFLARE_*、OAUTH_SIGNING_SECRET 与 ADMIN_PASSWORD_HASH；SecretScrubber 对所有输出、日志、Artifact 与 Webhook 全局脱敏。',
+          sec_2_t: '🧱 2. Linux 双 UID 物理隔离',
+          sec_2_d: 'Docker 生产镜像中 gateway 运行于 UID 1001 并独占 /data (0700 权限 SQLite WAL 与构件库)；沙盒命令与 Codex 运行于 UID 1002 (worker)，无法访问 /data。',
+          sec_3_t: '⏪ 3. 非破坏性 GIT_INDEX_FILE 自动快照',
+          sec_3_d: '每次执行 code_patch 或 codex_write 前，使用临时 GIT_INDEX_FILE 将已追踪与未追踪文件快照至 refs/mcp-checkpoints/*，绝不污染工作区真实 .git/index 或 HEAD。',
+          sec_4_t: '🚦 4. 禁推默认分支与两阶段基础设施变更',
+          sec_4_d: '物理拒绝向 main/master/默认分支直接推送；Cloudflare 与下游 MCP-2 的写操作必须先经 stage_mutation_plan 生成 15 分钟 TTL 快照计划，再由 publish_changes 执行。',
+          sec_5_t: '🛡️ 5. 外部不可信内容边界包装',
+          sec_5_d: 'github_inspect (PR 描述、评论、Actions 日志) 与 infra_inspect 返回的外部文本均包裹显式不可信数据边界标记，有效缓解间接提示词注入 (Indirect Prompt Injection)。',
+          sec_6_t: '🔑 6. OAuth 2.1 令牌家族轮换与盗用熔断',
+          sec_6_d: '完整实现 PKCE (S256)、RFC 8707 资源绑定及 Refresh Token 家族轮换（含 60 秒并发重试宽限期；宽限期后重放旧令牌立即吊销整个令牌家族）。',
+          qs_eyebrow: '极速部署与接入',
+          qs_title: '3 分钟快速上手',
+          qs_desc: '生成兼容 Docker Compose 的 scrypt 密码哈希，一键启动容器栈，并将 /mcp 地址填入 Web Gemini、Claude.ai 或 ChatGPT。',
+          qs_step1: '1. 生成管理员密码哈希 (scrypt:<salt>:<hex>) 与签名密钥',
+          qs_step2: '2. 配置 .env 并启动 Docker Compose 容器栈',
+          qs_step3: '3. 连接 Web Gemini (gemini.google.com)、Claude.ai 与 ChatGPT',
+          btn_copy: '复制'
+        }
+      };
+
+      var currentLang = (navigator.language && navigator.language.toLowerCase().indexOf('zh') === 0) ? 'zh' : 'en';
+      var currentFilter = 'all';
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function renderTools() {
+        var grid = document.getElementById('tools-grid');
+        if (!grid) return;
+        var filtered = TOOLS.filter(function (t) {
+          return currentFilter === 'all' || t.tier === currentFilter;
+        });
+        grid.innerHTML = filtered.map(function (t) {
+          var badgeClass = t.tier === 'tier-1' ? 't1' : (t.tier === 'tier-2' ? 't2' : 't3');
+          var tierLabel = currentLang === 'zh' ? t.tierLabelZh : t.tierLabelEn;
+          var desc = currentLang === 'zh' ? t.descZh : t.descEn;
+          var roClass = t.readOnlyHint ? 'annot-chip true-green' : 'annot-chip';
+          var destClass = t.destructiveHint ? 'annot-chip true-red' : 'annot-chip';
+          return '<article class="tool-card ' + escapeHtml(t.tier) + '">'
+            + '<div>'
+            + '<div class="tool-head">'
+            + '<div><div class="tool-num">TOOL #' + escapeHtml(t.num) + '</div><div class="tool-name">' + escapeHtml(t.name) + '</div></div>'
+            + '<span class="tier-badge ' + badgeClass + '">' + escapeHtml(tierLabel) + '</span>'
+            + '</div>'
+            + '<p class="tool-desc" style="margin-top:10px;">' + escapeHtml(desc) + '</p>'
+            + '</div>'
+            + '<div>'
+            + '<div class="tool-actions-list" style="margin-bottom:10px;">' + escapeHtml(t.actions) + '</div>'
+            + '<div class="annot-row">'
+            + '<span class="' + roClass + '">readOnlyHint: ' + escapeHtml(t.readOnlyHint) + '</span>'
+            + '<span class="' + destClass + '">destructiveHint: ' + escapeHtml(t.destructiveHint) + '</span>'
+            + '<span class="annot-chip">openWorldHint: ' + escapeHtml(t.openWorldHint) + '</span>'
+            + '</div>'
+            + '</div>'
+            + '</article>';
+        }).join('');
+      }
+
+      function applyLanguage(lang) {
+        currentLang = lang === 'zh' ? 'zh' : 'en';
+        document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+        var dict = I18N[currentLang];
+        var nodes = document.querySelectorAll('[data-i18n]');
+        for (var i = 0; i < nodes.length; i++) {
+          var key = nodes[i].getAttribute('data-i18n');
+          if (key && dict[key]) {
+            nodes[i].textContent = dict[key];
+          }
+        }
+        var langBtn = document.getElementById('lang-toggle-btn');
+        if (langBtn) {
+          langBtn.textContent = currentLang === 'zh' ? 'English / 中文' : 'EN / 简体中文';
+        }
+        renderTools();
+      }
+
+      // Language toggle
+      var langToggleBtn = document.getElementById('lang-toggle-btn');
+      if (langToggleBtn) {
+        langToggleBtn.addEventListener('click', function () {
+          applyLanguage(currentLang === 'en' ? 'zh' : 'en');
+        });
+      }
+
+      // Filter pills delegation
+      var filterBar = document.querySelector('.filter-bar');
+      if (filterBar) {
+        filterBar.addEventListener('click', function (e) {
+          var btn = e.target && e.target.closest ? e.target.closest('button[data-filter]') : null;
+          if (!btn) return;
+          currentFilter = btn.getAttribute('data-filter') || 'all';
+          var pills = filterBar.querySelectorAll('.filter-pill');
+          for (var i = 0; i < pills.length; i++) {
+            pills[i].classList.remove('active');
+          }
+          btn.classList.add('active');
+          renderTools();
+        });
+      }
+
+      // UI Preview Tabs delegation
+      var previewTabs = document.querySelector('.preview-tabs');
+      if (previewTabs) {
+        previewTabs.addEventListener('click', function (e) {
+          var btn = e.target && e.target.closest ? e.target.closest('button[data-preview-tab]') : null;
+          if (!btn) return;
+          var target = btn.getAttribute('data-preview-tab');
+          var portalBtn = document.getElementById('tab-btn-portal');
+          var adminBtn = document.getElementById('tab-btn-admin');
+          var portalPane = document.getElementById('preview-pane-portal');
+          var adminPane = document.getElementById('preview-pane-admin');
+          if (target === 'admin') {
+            if (portalBtn) portalBtn.classList.remove('btn-primary');
+            if (adminBtn) adminBtn.classList.add('btn-primary');
+            if (portalPane) portalPane.classList.remove('active');
+            if (adminPane) adminPane.classList.add('active');
+          } else {
+            if (adminBtn) adminBtn.classList.remove('btn-primary');
+            if (portalBtn) portalBtn.classList.add('btn-primary');
+            if (adminPane) adminPane.classList.remove('active');
+            if (portalPane) portalPane.classList.add('active');
+          }
+        });
+      }
+
+      // Mockup log expand/collapse button
+      var toggleLogBtn = document.getElementById('mock-toggle-log-btn');
+      var mockJobLog = document.getElementById('mock-job-log');
+      if (toggleLogBtn && mockJobLog) {
+        toggleLogBtn.addEventListener('click', function () {
+          var isHidden = mockJobLog.style.display === 'none';
+          mockJobLog.style.display = isHidden ? 'block' : 'none';
+        });
+      }
+
+      // Copy buttons delegation
+      document.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('button[data-copy-target]') : null;
+        if (!btn) return;
+        var targetId = btn.getAttribute('data-copy-target');
+        var el = targetId ? document.getElementById(targetId) : null;
+        if (!el) return;
+        var text = el.value !== undefined && el.tagName === 'INPUT' ? el.value : (el.textContent || '');
+        var origText = btn.textContent;
+        var showCopied = function () {
+          btn.textContent = currentLang === 'zh' ? '已复制 ✓' : 'Copied ✓';
+          setTimeout(function () {
+            btn.textContent = I18N[currentLang].btn_copy || origText;
+          }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(showCopied).catch(function () {
+            showCopied();
+          });
+        } else {
+          showCopied();
+        }
+      });
+
+      applyLanguage(currentLang);
+    })();
+  </script>
+</body>
+</html>

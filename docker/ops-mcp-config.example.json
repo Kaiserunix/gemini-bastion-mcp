@@ -1,0 +1,52 @@
+[
+  {
+    "id": "ops-ssh",
+    "transport": "http",
+    "url": "http://ops-mcp:8090/mcp",
+    "headers": {},
+    "description": "Internal Streamable HTTP SSH sidecar on ops_net (uarlouski/ssh-mcp-server via mcp-proxy). Holds restricted SSH keys isolated from /workspaces.",
+    "enabled": true,
+    "timeoutMs": 30000,
+    "readonlyTools": [
+      "list_hosts",
+      "read_file",
+      "list_directory",
+      "get_host_status"
+    ],
+    "mutatingTools": [
+      "exec_command",
+      "write_file",
+      "upload_file"
+    ],
+    "deniedTools": [
+      "delete_file",
+      "remove_directory",
+      "create_tunnel",
+      "raw_sudo_shell"
+    ]
+  },
+  {
+    "id": "local-postgres",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-postgres",
+      "postgresql://readonly_user:replace_me@host.docker.internal:5432/app_db"
+    ],
+    "env": {
+      "NODE_ENV": "production"
+    },
+    "description": "Example local stdio MCP-2 server (disabled by default). Enable after setting connection string and matching tool names from infra_inspect downstream_list.",
+    "enabled": false,
+    "timeoutMs": 15000,
+    "readonlyTools": [
+      "query"
+    ],
+    "mutatingTools": [],
+    "deniedTools": [
+      "execute_ddl",
+      "drop_table"
+    ]
+  }
+]

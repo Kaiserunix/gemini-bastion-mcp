@@ -1,0 +1,121 @@
+# ==============================================================================
+# GeminiBastionMCP (gemini-bastion-mcp) Production Docker Compose Stack
+# ==============================================================================
+# Usage:
+#   Core stack (gateway + cloudflared):
+#     Put CLOUDFLARE_TUNNEL_TOKEN in docker/.env (or export in shell) and use `scrypt:<saltHex>:<keyHex>`
+#     for ADMIN_PASSWORD_HASH in ../.env (note: legacy `scrypt$...` must be escaped as `scrypt$$...` for Compose):
+#     docker compose -f docker/docker-compose.yml up -d --build
+#
+#   With optional ops-mcp SSH sidecar (MCP-2 federation):
+#     docker compose -f docker/docker-compose.yml --profile ops up -d --build
+# ==============================================================================
+
+name: gemini-bastion-mcp
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+    container_name: gemini-bastion-mcp-gateway
+    restart: unless-stopped
+    labels:
+      com.geminibastion.service: "gateway"
+      com.geminibastion.project: "gemini-bastion-mcp"
+    env_file:
+      - ../.env
+    environment:
+      PORT: "8787"
+      DATA_DIR: /data
+      ARTIFACTS_DIR: /data/artifacts
+      WORKSPACES_DIR: /workspaces
+      CODEX_HOME: /data/codex
+      MISE_DATA_DIR: /opt/mise
+      MISE_CACHE_DIR: /opt/mise/cache
+      MISE_CONFIG_DIR: /opt/mise/config
+      SANDBOX_UID: "1002"
+      SANDBOX_GID: "1002"
+      # TRUST_CF_CONNECTING_IP is read from ../.env (defaults to true in src/config.ts)
+      # Clear tunnel credentials from the gateway container environment
+      CLOUDFLARE_TUNNEL_TOKEN: ""
+      TUNNEL_TOKEN: ""
+    # Internal container port ONLY — no public host port is published.
+    # External ingress flows exclusively via Cloudflare Tunnel (cloudflared) or an internal reverse proxy.
+    expose:
+      - "8787"
+    volumes:
+      - mcp_sqlite_data:/data
+      - mcp_workspaces:/workspaces
+      - mcp_codex_sessions:/data/codex
+      - mcp_tool_caches:/opt/mise
+      # Uncomment when using DOWNSTREAM_MCPS_FILE=/etc/gemini-bastion/ops-mcp-config.json:
+      # - ./ops-mcp-config.json:/etc/gemini-bastion/ops-mcp-config.json:ro
+    networks:
+      - edge_net
+      - ops_net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: gemini-bastion-mcp-cloudflared
+    restart: unless-stopped
+    labels:
+      com.geminibastion.service: "cloudflared"
+      com.geminibastion.project: "gemini-bastion-mcp"
+    # Configure the Cloudflare Zero Trust Tunnel public hostname (e.g. mcp.example.com)
+    # to route to internal service URL: http://gateway:8787
+    command: tunnel --no-autoupdate run
+    # Only pass TUNNEL_TOKEN (never mount ../.env so cloudflared cannot read GH_TOKEN/OAUTH_SIGNING_SECRET)
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-${TUNNEL_TOKEN:-}}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - edge_net
+
+  # Optional downstream MCP-2 sidecar (isolated on ops_net; zero access to /workspaces or /data)
+  # Packages are pre-installed in docker/Dockerfile.ops-mcp so it runs offline on internal ops_net as non-root `node`.
+  ops-mcp:
+    profiles: ["ops"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ops-mcp
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+    container_name: gemini-bastion-mcp-ops-sidecar
+    restart: unless-stopped
+    labels:
+      com.geminibastion.service: "ops-mcp"
+      com.geminibastion.project: "gemini-bastion-mcp"
+    expose:
+      - "8090"
+    volumes:
+      # Dedicated restricted SSH keys/config strictly isolated from code workspaces.
+      # Create ./ops-ssh (with ssh-mcp config.json and read-only deploy key) before enabling --profile ops.
+      - ./ops-ssh:/etc/ops-ssh:ro
+    networks:
+      - ops_net
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  edge_net:
+    driver: bridge
+  ops_net:
+    driver: bridge
+    internal: true
+
+volumes:
+  mcp_sqlite_data:
+  mcp_workspaces:
+  mcp_codex_sessions:
+  mcp_tool_caches:
