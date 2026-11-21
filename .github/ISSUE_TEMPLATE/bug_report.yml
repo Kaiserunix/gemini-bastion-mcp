@@ -1,0 +1,50 @@
+name: Bug Report
+description: Report a bug, regression, or deployment issue in GeminiBastionMCP
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please avoid pasting real tokens, `.env` secrets, or private keys.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps, request/tool payloads, or configuration needed to reproduce.
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Observe error ...
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime Environment
+      options:
+        - Docker Compose (Cloudflare Tunnel)
+        - Docker Compose (Nginx Reverse Proxy)
+        - Local Node.js (Linux)
+        - Local Node.js (macOS)
+        - Local Node.js (Windows)
+    validations:
+      required: true
+  - type: input
+    id: node_version
+    attributes:
+      label: Node.js / Docker Version
+      placeholder: "e.g. Node v22.23.4 / Docker 29.x"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized Logs / Output
+      description: Paste scrubbed logs (verify no tokens or private keys are included).
+      render: shell

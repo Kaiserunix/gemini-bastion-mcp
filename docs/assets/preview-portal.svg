@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-label="GeminiBastionMCP Public Gateway Portal GET / UI Preview">
+  <defs>
+    <linearGradient id="portalBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1020" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Browser Frame -->
+  <rect width="1200" height="640" rx="18" fill="url(#portalBg)" stroke="#2a3964" stroke-width="2" />
+  <rect x="2" y="2" width="1196" height="44" rx="16" fill="#11182b" />
+  <line x1="0" y1="46" x2="1200" y2="46" stroke="#233054" stroke-width="1.5" />
+
+  <!-- Window Traffic Lights & URL Bar -->
+  <circle cx="26" cy="24" r="6" fill="#ef4444" />
+  <circle cx="46" cy="24" r="6" fill="#f59e0b" />
+  <circle cx="66" cy="24" r="6" fill="#10b981" />
+  <rect x="340" y="10" width="520" height="28" rx="8" fill="#0b1020" stroke="#233054" stroke-width="1" />
+  <text x="600" y="28" text-anchor="middle" fill="#93a3c8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5">GET https://mcp.yourdomain.com/ — Zero-Leakage Public Gateway Portal</text>
+  <text x="1165" y="28" text-anchor="end" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">CSP: sha256-strict</text>
+
+  <!-- Portal Content Container -->
+  <g transform="translate(80, 72)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+    <!-- Topbar -->
+    <rect x="0" y="0" width="1040" height="54" rx="14" fill="#131a2e" stroke="#233054" stroke-width="1.5" />
+    <rect x="18" y="13" width="90" height="28" rx="14" fill="#0d2824" stroke="#22c55e" stroke-width="1.2" />
+    <circle cx="34" cy="27" r="4.5" fill="#22c55e" />
+    <text x="46" y="31" fill="#22c55e" font-size="12" font-weight="700">ONLINE</text>
+    <text x="122" y="33" fill="#e6ecff" font-size="18" font-weight="700">GeminiBastionMCP</text>
+    <rect x="876" y="10" width="146" height="34" rx="9" fill="#0f1628" stroke="#3b82f6" stroke-width="1.2" />
+    <text x="949" y="31" text-anchor="middle" fill="#e6ecff" font-size="13" font-weight="600">Operator /admin &#8594;</text>
+
+    <!-- Hero Heading -->
+    <text x="0" y="96" fill="#f8fafc" font-size="25" font-weight="800">Self-Hosted MCP 2025-11-25 Streamable HTTP &amp; OAuth 2.1 Bastion</text>
+    <text x="0" y="120" fill="#93a3c8" font-size="14">Stateless Transport · PKCE (S256) · Dynamic Client Registration · 10 Tools, 1 Approval Gate</text>
+
+    <!-- Card 1: MCP Streamable HTTP Endpoint -->
+    <g transform="translate(0, 140)">
+      <rect x="0" y="0" width="1040" height="148" rx="16" fill="#131a2e" stroke="#233054" stroke-width="1.5" />
+      <text x="22" y="28" fill="#c7d5ff" font-size="13" font-weight="700" letter-spacing="0.8">MCP STREAMABLE HTTP ENDPOINT</text>
+      <rect x="22" y="40" width="898" height="40" rx="10" fill="#0f1628" stroke="#2a3a64" stroke-width="1.2" />
+      <text x="38" y="65" fill="#e6ecff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14.5">https://mcp.yourdomain.com/mcp</text>
+      <rect x="932" y="40" width="86" height="40" rx="10" fill="#3b82f6" />
+      <text x="975" y="65" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Copy</text>
+
+      <text x="22" y="104" fill="#93a3c8" font-size="12.5">✓ OAuth 2.1 Metadata: <tspan fill="#7db0ff" font-family="ui-monospace, monospace">https://mcp.yourdomain.com/.well-known/oauth-authorization-server</tspan></text>
+      <text x="22" y="124" fill="#93a3c8" font-size="12.5">✓ Protected Resource: <tspan fill="#7db0ff" font-family="ui-monospace, monospace">https://mcp.yourdomain.com/.well-known/oauth-protected-resource</tspan> · <tspan fill="#86efac">SQLite WAL Engine: Ready</tspan></text>
+    </g>
+
+    <!-- Card 2: Quick Connect Guide (3 Columns) -->
+    <g transform="translate(0, 304)">
+      <rect x="0" y="0" width="1040" height="122" rx="16" fill="#131a2e" stroke="#233054" stroke-width="1.5" />
+      <text x="22" y="26" fill="#c7d5ff" font-size="13" font-weight="700" letter-spacing="0.8">QUICK CONNECT GUIDE</text>
+
+      <rect x="22" y="38" width="320" height="68" rx="11" fill="#0f1628" stroke="#233054" stroke-width="1.2" />
+      <text x="36" y="60" fill="#e6ecff" font-size="14" font-weight="700">Web Gemini (gemini.google.com)</text>
+      <text x="36" y="80" fill="#93a3c8" font-size="12">Connected Apps &#8594; Custom MCP &#8594; paste /mcp URL.</text>
+      <text x="36" y="96" fill="#93c5fd" font-size="11.5">OAuth 2.1 DCR + PKCE runs automatically.</text>
+
+      <rect x="360" y="38" width="320" height="68" rx="11" fill="#0f1628" stroke="#233054" stroke-width="1.2" />
+      <text x="374" y="60" fill="#e6ecff" font-size="14" font-weight="700">Claude.ai &amp; ChatGPT</text>
+      <text x="374" y="80" fill="#93a3c8" font-size="12">Add Custom Connector pointing to /mcp.</text>
+      <text x="374" y="96" fill="#93c5fd" font-size="11.5">Stateless Streamable HTTP + RFC 8707 binding.</text>
+
+      <rect x="698" y="38" width="320" height="68" rx="11" fill="#0f1628" stroke="#233054" stroke-width="1.2" />
+      <text x="712" y="60" fill="#e6ecff" font-size="14" font-weight="700">Operator Auth &amp; SSO</text>
+      <text x="712" y="80" fill="#93a3c8" font-size="12">Authorize via Password or Google/GitHub OAuth.</text>
+      <text x="712" y="96" fill="#86efac" font-size="11.5">Fail-closed allowlist + PKCE S256 binding.</text>
+    </g>
+
+    <!-- Card 3: 10-Tool Contract Surface -->
+    <g transform="translate(0, 442)">
+      <rect x="0" y="0" width="1040" height="106" rx="16" fill="#131a2e" stroke="#233054" stroke-width="1.5" />
+      <text x="22" y="26" fill="#c7d5ff" font-size="13" font-weight="700" letter-spacing="0.8">10-TOOL CONTRACT SURFACE (ZERO PRIVATE DATA EXPOSED ON GET /)</text>
+
+      <!-- Row 1 of Tool Badges -->
+      <g transform="translate(22, 38)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">
+        <rect x="0" y="0" width="154" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="77" y="17" text-anchor="middle" fill="#bdf7cf">● workspace_manage</text>
+
+        <rect x="164" y="0" width="126" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="227" y="17" text-anchor="middle" fill="#bdf7cf">● code_explore</text>
+
+        <rect x="300" y="0" width="114" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="357" y="17" text-anchor="middle" fill="#bdf7cf">● code_patch</text>
+
+        <rect x="424" y="0" width="140" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="494" y="17" text-anchor="middle" fill="#bdf7cf">● workspace_exec</text>
+
+        <rect x="574" y="0" width="146" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="647" y="17" text-anchor="middle" fill="#bdf7cf">● dispatch_runner</text>
+
+        <rect x="730" y="0" width="114" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="787" y="17" text-anchor="middle" fill="#bdf7cf">● job_status</text>
+
+        <rect x="854" y="0" width="140" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="924" y="17" text-anchor="middle" fill="#bdf7cf">● github_inspect</text>
+      </g>
+
+      <!-- Row 2 of Tool Badges -->
+      <g transform="translate(22, 70)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">
+        <rect x="0" y="0" width="134" height="26" rx="13" fill="#0f1628" stroke="#10b981" stroke-width="1.2" />
+        <text x="67" y="17" text-anchor="middle" fill="#bdf7cf">● infra_inspect</text>
+
+        <rect x="144" y="0" width="182" height="26" rx="13" fill="#0f1628" stroke="#f59e0b" stroke-width="1.2" />
+        <text x="235" y="17" text-anchor="middle" fill="#fde68a">▲ stage_mutation_plan</text>
+
+        <rect x="336" y="0" width="356" height="26" rx="13" fill="#1f121b" stroke="#ef4444" stroke-width="1.4" />
+        <text x="514" y="17" text-anchor="middle" fill="#fecaca">◆ publish_changes (Single External Write Gate)</text>
+      </g>
+    </g>
+  </g>
+</svg>

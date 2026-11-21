@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" role="img" aria-label="GeminiBastionMCP /admin Mobile and Web Operator Cockpit Preview">
+  <defs>
+    <linearGradient id="adminBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1020" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Browser Frame -->
+  <rect width="1200" height="680" rx="18" fill="url(#adminBg)" stroke="#2a3964" stroke-width="2" />
+  <rect x="2" y="2" width="1196" height="44" rx="16" fill="#11182b" />
+  <line x1="0" y1="46" x2="1200" y2="46" stroke="#233054" stroke-width="1.5" />
+
+  <!-- Window Traffic Lights & URL Bar -->
+  <circle cx="26" cy="24" r="6" fill="#ef4444" />
+  <circle cx="46" cy="24" r="6" fill="#f59e0b" />
+  <circle cx="66" cy="24" r="6" fill="#10b981" />
+  <rect x="310" y="10" width="580" height="28" rx="8" fill="#0b1020" stroke="#233054" stroke-width="1" />
+  <text x="600" y="28" text-anchor="middle" fill="#93a3c8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5">GET https://mcp.yourdomain.com/admin — Mobile-First Operator Cockpit PWA</text>
+  <text x="1165" y="28" text-anchor="end" fill="#22c55e" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">● SSE LIVE STREAM</text>
+
+  <!-- Cockpit Content Container -->
+  <g transform="translate(60, 66)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+    <!-- Header Bar -->
+    <rect x="0" y="0" width="1080" height="58" rx="14" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+    <circle cx="26" cy="29" r="6" fill="#22c55e" />
+    <text x="42" y="26" fill="#f8fafc" font-size="16" font-weight="700">GeminiBastionMCP</text>
+    <text x="42" y="44" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="12">https://mcp.yourdomain.com</text>
+
+    <rect x="814" y="13" width="154" height="32" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1" />
+    <text x="891" y="33" text-anchor="middle" fill="#93c5fd" font-size="12.5" font-weight="600">Copy /mcp URL</text>
+    <rect x="978" y="13" width="84" height="32" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1" />
+    <text x="1020" y="33" text-anchor="middle" fill="#e2e8f0" font-size="12.5" font-weight="600">Logout</text>
+
+    <!-- Top 4-KPI Pulse Strip -->
+    <g transform="translate(0, 74)">
+      <!-- KPI 1: Active Jobs -->
+      <rect x="0" y="0" width="258" height="74" rx="12" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+      <text x="16" y="24" fill="#94a3b8" font-size="11.5" font-weight="700" letter-spacing="0.6">ACTIVE JOBS</text>
+      <circle cx="24" cy="50" r="5" fill="#22c55e" />
+      <text x="38" y="56" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="24" font-weight="800">1</text>
+      <text x="64" y="54" fill="#86efac" font-size="12.5" font-weight="600">codex_write running</text>
+
+      <!-- KPI 2: Staged Plans -->
+      <rect x="274" y="0" width="258" height="74" rx="12" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+      <text x="290" y="24" fill="#94a3b8" font-size="11.5" font-weight="700" letter-spacing="0.6">STAGED PLANS (15M TTL)</text>
+      <text x="290" y="56" fill="#fde68a" font-family="ui-monospace, monospace" font-size="24" font-weight="800">1</text>
+      <text x="318" y="54" fill="#94a3b8" font-size="12.5">cloudflare_dns · 14m left</text>
+
+      <!-- KPI 3: Workspaces -->
+      <rect x="548" y="0" width="258" height="74" rx="12" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+      <text x="564" y="24" fill="#94a3b8" font-size="11.5" font-weight="700" letter-spacing="0.6">WORKSPACES</text>
+      <text x="564" y="56" fill="#86efac" font-family="ui-monospace, monospace" font-size="24" font-weight="800">3</text>
+      <text x="592" y="54" fill="#94a3b8" font-size="12.5">12 git snapshots ready</text>
+
+      <!-- KPI 4: OAuth Sessions -->
+      <rect x="822" y="0" width="258" height="74" rx="12" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+      <text x="838" y="24" fill="#94a3b8" font-size="11.5" font-weight="700" letter-spacing="0.6">OAUTH SESSIONS</text>
+      <text x="838" y="56" fill="#e2e8f0" font-family="ui-monospace, monospace" font-size="24" font-weight="800">2</text>
+      <text x="866" y="54" fill="#94a3b8" font-size="12.5">active token families</text>
+    </g>
+
+    <!-- Navigation Tabs -->
+    <g transform="translate(0, 162)">
+      <rect x="0" y="0" width="1080" height="40" rx="10" fill="#0e1526" stroke="#25304d" stroke-width="1" />
+      <text x="24" y="25" fill="#ffffff" font-size="13.5" font-weight="700">Jobs (Live)</text>
+      <line x1="18" y1="39" x2="104" y2="39" stroke="#3b82f6" stroke-width="3" />
+      <text x="140" y="25" fill="#94a3b8" font-size="13.5" font-weight="600">Workspaces &amp; Rollback</text>
+      <text x="330" y="25" fill="#94a3b8" font-size="13.5" font-weight="600">OAuth &amp; Google/GitHub SSO</text>
+      <text x="545" y="25" fill="#94a3b8" font-size="13.5" font-weight="600">Mutation Plans</text>
+      <text x="680" y="25" fill="#94a3b8" font-size="13.5" font-weight="600">Audit Logs</text>
+    </g>
+
+    <!-- Active Codex Job Card -->
+    <g transform="translate(0, 216)">
+      <rect x="0" y="0" width="1080" height="202" rx="14" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+      <text x="20" y="28" fill="#f8fafc" font-size="15" font-weight="700">core-platform · codex_write</text>
+      <text x="20" y="48" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="12">job_9f42c1 · Checkpoint: cp_20261121_01 · Tokens: 14,820 (in 9,410 / out 5,410) · Updated: Just now</text>
+
+      <rect x="780" y="16" width="84" height="26" rx="13" fill="#0e1526" stroke="#1d4ed8" stroke-width="1.2" />
+      <text x="822" y="33" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="700">RUNNING</text>
+
+      <rect x="874" y="14" width="124" height="30" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1" />
+      <text x="936" y="33" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">Expand / Collapse</text>
+
+      <rect x="1008" y="14" width="54" height="30" rx="8" fill="#7f1d1d" stroke="#b91c1c" stroke-width="1" />
+      <text x="1035" y="33" text-anchor="middle" fill="#fecaca" font-size="12" font-weight="700">Kill</text>
+
+      <!-- Terminal Log Box -->
+      <rect x="20" y="62" width="1040" height="124" rx="10" fill="#0b1020" stroke="#25304d" stroke-width="1.2" />
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.2" fill="#cbd5e1">
+        <text x="34" y="86" fill="#93c5fd">Objective: Refactor OAuth PKCE handler and run L0/L1 validation pipeline</text>
+        <text x="34" y="106" fill="#64748b">---</text>
+        <text x="34" y="126">[11 checkpoint] Created non-destructive GIT_INDEX_FILE snapshot refs/mcp-checkpoints/cp_20261121_01</text>
+        <text x="34" y="146">[12 codex] Applied atomic multi-file patch to src/auth/idp.ts (0 secrets exposed in worker env)</text>
+        <text x="34" y="168" fill="#86efac">[13 validate] L0 tsc --noEmit passed (0 errors) | L1 vitest passed (59/59 tests green)</text>
+      </g>
+    </g>
+
+    <!-- Bottom Split Cards: Workspace Checkpoint Rollback + Upstream OAuth SSO Callback URLs -->
+    <g transform="translate(0, 434)">
+      <!-- Left Card: Workspace Checkpoint Rollback -->
+      <rect x="0" y="0" width="530" height="154" rx="14" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+      <text x="20" y="28" fill="#c7d5ff" font-size="12.5" font-weight="700" letter-spacing="0.7">WORKSPACE SNAPSHOT ROLLBACK (GIT_INDEX_FILE)</text>
+      <text x="20" y="54" fill="#f8fafc" font-size="14.5" font-weight="700">core-platform (main)</text>
+      <text x="20" y="74" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="11.5">https://github.com/example-org/core-platform · Stack: TypeScript, Vitest</text>
+      <rect x="20" y="94" width="382" height="36" rx="8" fill="#0b1020" stroke="#25304d" stroke-width="1.2" />
+      <text x="32" y="116" fill="#e2e8f0" font-family="ui-monospace, monospace" font-size="12">cp_20261121_01 — pre-codex_write automatic snapshot &#9662;</text>
+      <rect x="414" y="94" width="96" height="36" rx="8" fill="#7f1d1d" stroke="#b91c1c" stroke-width="1.2" />
+      <text x="462" y="116" text-anchor="middle" fill="#fecaca" font-size="12.5" font-weight="700">Rollback</text>
+
+      <!-- Right Card: Upstream OAuth SSO Callback URLs -->
+      <rect x="550" y="0" width="530" height="154" rx="14" fill="#131a2e" stroke="#25304d" stroke-width="1.5" />
+      <text x="570" y="28" fill="#c7d5ff" font-size="12.5" font-weight="700" letter-spacing="0.7">UPSTREAM OPERATOR SSO (FAIL-CLOSED GOOGLE &amp; GITHUB OAUTH)</text>
+      <rect x="570" y="44" width="490" height="42" rx="8" fill="#0b1020" stroke="#25304d" stroke-width="1" />
+      <text x="582" y="62" fill="#86efac" font-size="11.5" font-weight="700">Google OAuth Callback URL (PKCE S256 + Verified Email Allowlist)</text>
+      <text x="582" y="78" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="11.5">https://mcp.yourdomain.com/auth/idp/google/callback</text>
+
+      <rect x="570" y="96" width="490" height="42" rx="8" fill="#0b1020" stroke="#25304d" stroke-width="1" />
+      <text x="582" y="114" fill="#86efac" font-size="11.5" font-weight="700">GitHub OAuth Callback URL (Immutable numeric user.id / login Allowlist)</text>
+      <text x="582" y="130" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="11.5">https://mcp.yourdomain.com/auth/idp/github/callback</text>
+    </g>
+  </g>
+</svg>

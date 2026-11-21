@@ -1,40 +1,48 @@
+<p align="center">
+  <img src="docs/assets/hero-banner.svg" alt="GeminiBastionMCP — 专为 Web Gemini、Claude 与 ChatGPT 打造的开源自托管 OAuth 2.1 远程 MCP 研发运维堡垒网关" width="100%" />
+</p>
+
 <div align="center">
 
 # GeminiBastionMCP (`gemini-bastion-mcp`)
 
-**[English](README.md) | 简体中文 | [项目主页 (Live Showcase)](https://kaiserunix.github.io/gemini-bastion-mcp/) | [GitHub 仓库](https://github.com/Kaiserunix/gemini-bastion-mcp)**
-
-**专为 Web Gemini、Claude 与 ChatGPT 打造的开源自托管 OAuth 2.1 MCP 研发运维堡垒网关：内置沙盒工作区、Codex 异步引擎与 Cloudflare 管控，以「10 大复合工具 + 1 道唯一出闸门」彻底终结授权弹窗地狱与密钥泄漏。**
+**专为 Web Gemini Connected Apps、Claude.ai Custom Connectors 与 ChatGPT MCP 打造的开源自托管 OAuth 2.1 Remote MCP Server 研发运维堡垒网关：内置沙盒工作区、OpenAI Codex SDK 异步引擎与 Cloudflare Workers/Pages 管控，以「10 大复合工具 + 1 道唯一出闸门」彻底终结授权弹窗地狱与密钥泄漏。**
 
 [![CI](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml)
 [![Deploy GitHub Pages](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/pages.yml/badge.svg)](https://kaiserunix.github.io/gemini-bastion-mcp/)
+[![Release v0.1.0](https://img.shields.io/badge/Release-v0.1.0-6366f1?style=flat-square)](CHANGELOG.md)
+[![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
 [![MCP 2025-11-25](https://img.shields.io/badge/MCP-2025--11--25%20Streamable%20HTTP-3b82f6?style=flat-square)](https://modelcontextprotocol.io)
 [![OAuth 2.1 + PKCE + DCR](https://img.shields.io/badge/OAuth%202.1-PKCE%20%2B%20DCR%20%2B%20RFC%208707-10b981?style=flat-square)](#连接-ai-客户端)
-[![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
-[![Docker Ready](https://img.shields.io/badge/Docker-UID%201001%2F1002%20Isolated-0ea5e9?style=flat-square)](docker/docker-compose.yml)
+[![Tests 59/59](https://img.shields.io/badge/Tests-59%2F59%20Passing-10b981?style=flat-square)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-64748b?style=flat-square)](LICENSE)
+
+**[English](README.md) | 简体中文**
+
+[项目主页 (Live Showcase)](https://kaiserunix.github.io/gemini-bastion-mcp/) · [为什么做这个项目](#为什么做这个项目why-this-exists) · [整体架构](#整体架构图) · [10 大工具](#10-大工具1-道审批闸门) · [界面预览](#界面预览) · [3 分钟上手](#3-分钟快速上手) · [Google/GitHub SSO](#上游管理员-oauth-登录google--github-oauth) · [安全防线](#六层安全防线与护栏)
 
 </div>
 
 ---
 
-- **在手机或浏览器用 `gemini.google.com` 写代码、跑测试**：打开网页版 Gemini，一键同步 GitHub 仓库，用 `ripgrep`、`ast-grep` 和 `repomix` 探索代码，打多文件原子补丁并跑通 L0/L1/L2 校验流水线——无需守在电脑前。
-- **把重任务委托给后台 Codex 与长耗时构建**：一条指令派发 `@openai/codex-sdk` 异步线程或测试构建（`workspace_exec` 超过 15 秒自动晋升为后台 SQLite Job）。关掉网页照样跑，完成后通过 Webhook 推送脱敏通知到手机。
+- **在手机或浏览器用 `gemini.google.com` Connected Apps 写代码、跑测试**：打开网页版 Gemini，一键同步 GitHub 仓库，用 `ripgrep`、`ast-grep` 和 `repomix` 探索代码，打多文件原子补丁并跑通 L0/L1/L2 校验流水线——无需守在电脑前。
+- **把重任务委托给后台 OpenAI Codex SDK 与长耗时构建**：一条指令派发 `@openai/codex-sdk` 异步线程或测试构建（`workspace_exec` 超过 15 秒自动晋升为后台 SQLite Job）。关掉网页照样跑，完成后通过 Webhook 推送脱敏通知到手机。
 - **零密钥泄漏 & 单闸门爆炸半径控制**：沙盒内子进程彻底剥离 `GH_TOKEN`、`CLOUDFLARE_*` 等网关密钥；`GIT_INDEX_FILE` 非破坏性快照保护工作树，物理拦截直推 `main`/`master`，一切外部写入操作强制收束于**唯一出闸门 (`publish_changes`)**。
 
-> **原生适配 Web Gemini Connected Apps、Claude.ai、ChatGPT Connectors、Cursor 与 MCP Inspector。**
+> [!TIP]
+> **原生适配 Web Gemini Connected Apps、`claude.ai` Custom Connectors、ChatGPT MCP、Cursor 与 MCP Inspector** —— 基于无状态 **MCP 2025-11-25 Streamable HTTP** 与 **OAuth 2.1 + PKCE + Dynamic Client Registration (DCR)**。
 
 ---
 
 ## 为什么做这个项目（Why This Exists）
 
-大多数远程 MCP 方案都面临两难：要么暴露三四十个零碎工具，导致网页端每读一个文件、跑一次测试就弹一次授权确认框；要么直接在宿主机裸跑 Shell，毫无密钥隔离与回滚保护。
+大多数远程 MCP Server 都面临两难：要么暴露三四十个零碎工具，导致网页端每读一个文件、跑一次测试就弹一次授权确认框；要么直接在宿主机裸跑 Shell，毫无密钥隔离与回滚保护。
 
 | 能力维度 | **GeminiBastionMCP** | 通用聚合网关 (如 MetaMCP) | 官方远程 MCP (GitHub / CF) | 本地 Shell / Stdio MCP |
 | :--- | :--- | :--- | :--- | :--- |
-| **Web Gemini (`gemini.google.com`) 原生接入** | **完整支持** (OAuth 2.1 + PKCE S256 + DCR 支持 16 个 Redirect URIs + 8KB `state` + RFC 8707/9728) | 多数缺少 RFC 9728/8707 或大 `state` 支持 | 仅限单一官方平台 | 仅限本地桌面客户端 |
-| **Web 聊天端授权弹窗体验** | **10 工具收敛 + 唯一审批闸门** (Tier 1/2 可设始终允许，仅 `publish_changes` 需确认) | 几十个底层工具导致确认弹窗点到手软 | 读写工具混杂 | 每次执行命令均需确认或全裸奔 |
-| **真沙盒跑测试 + 异步 Codex 引擎** | **原生内置** (`workspace_exec` 15s 自动转后台 Job + `@openai/codex-sdk` 线程续接) | 无代码执行沙盒 | 仅 API 调用，不能跑本地构建/测试 | 跑在宿主机，无后台 Job 晋升机制 |
+| **Web Gemini (`gemini.google.com`) OAuth 2.1 DCR** | **完整支持** (PKCE `S256`、DCR 支持 16 个 Redirect URIs、8KB `state`、RFC 8707/9728) | 多数缺少 RFC 9728/8707 或大 `state` 支持 | 仅限单一官方平台 | 仅限本地桌面客户端 |
+| **Web 与移动端授权弹窗体验** | **10 工具收敛 + 唯一审批闸门** (Tier 1/2 可设始终允许，仅 `publish_changes` 需确认) | 几十个底层工具导致确认弹窗点到手软 | 读写工具混杂 | 每次执行命令均需确认或全裸奔 |
+| **真沙盒跑测试 + OpenAI Codex SDK** | **原生内置** (`workspace_exec` 15s 自动转后台 Job + `@openai/codex-sdk` 线程续接) | 无代码执行沙盒 | 仅 API 调用，不能跑本地构建/测试 | 跑在宿主机，无后台 Job 晋升机制 |
 | **密钥隔离与无损回滚** | **双 UID (1001/1002) + 环境白名单 + `SecretScrubber` + `GIT_INDEX_FILE` 快照** | 取决于下游服务 | 云端托管 | 子进程直接继承宿主机全量环境变量 |
 | **两阶段基础设施变更 (Plan -> Apply)** | **`stage_mutation_plan` (15 分钟 TTL + 回滚快照) -> `publish_changes`** | 直接透传写操作 | 直接执行写操作 | 无 |
 
@@ -55,7 +63,7 @@ flowchart LR
 
   subgraph Gateway["GeminiBastionMCP 网关 (UID 1001: gateway)"]
     Portal["GET / 公开入口页\n(零私有数据泄漏)"]
-    Auth["OAuth 2.1 + PKCE + DCR\nRFC 8707/9728 + Token 家族轮换"]
+    Auth["OAuth 2.1 + PKCE + DCR\nGoogle & GitHub SSO"]
     Scrub["SecretScrubber 与\n不可信内容边界包装"]
     Admin["/admin 移动端 PWA 控制台\nSSE 实时任务流与一键回滚"]
     DB[("SQLite WAL (/data)\n0700 仅 gateway 可读写")]
@@ -101,7 +109,7 @@ flowchart LR
 | 2 | `code_explore` | `pack` (repomix)、`search` (ripgrep)、`ast` (ast-grep)、`read_lines`、`read_artifact`、`git_diff` |
 | 3 | `code_patch` | 原子化多文件 `patch`（支持 `hunks` + `line_hint`）、`create_or_overwrite`、`delete_file`，自带自动检查点与 L0/L1/L2 校验回滚 |
 | 4 | `workspace_exec` | 在 `/workspaces/{slug}` 内运行沙盒命令（`wait_ms` 最长 `15000`；超时自动转后台 SQLite `job_id`） |
-| 5 | `dispatch_runner` | 派发后台 `codex_readonly`、`codex_write` 或 `shell_task`，支持线程续接、Token/时长预算及自动检查点 |
+| 5 | `dispatch_runner` | 基于 `@openai/codex-sdk` 派发后台 `codex_readonly`、`codex_write` 或 `shell_task`，支持线程续接、预算上限及自动检查点 |
 | 6 | `job_status` | 查询任务状态、流式事件、Token 消耗、`thread_id`、`git status -sb`、最终报告，或通过 `cancel: true` 实时中止 |
 | 7 | `github_inspect` | 只读查看 PR Diff/文件、Issue 评论与失败的 Actions 日志（带防 Prompt 注入的不可信数据边界包装） |
 | 8 | `infra_inspect` | 只读巡检 Cloudflare（`zones`、`dns_records`、`workers`、`pages`、`kv_namespaces`、`d1_databases`、`waf_rules`、`worker_tail_logs`）及下游 MCP-2 `readonlyTools` |
@@ -120,69 +128,112 @@ flowchart LR
 
 ---
 
+## 界面预览
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/preview-portal.svg" alt="GeminiBastionMCP 公开网关门户 (GET /)" width="100%" />
+      <br />
+      <sub><strong>公开网关门户 (<code>GET /</code>)</strong> — 零私有数据泄漏状态页，支持一键复制 <code>/mcp</code>、<code>.well-known</code> 链接与 JSON 内容协商。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/preview-admin.svg" alt="GeminiBastionMCP 移动端运维座舱 (/admin PWA)" width="100%" />
+      <br />
+      <sub><strong>移动端运维座舱 (<code>/admin</code> PWA)</strong> — 4 宫格 KPI 态势条、SSE 实时日志流、<code>Kill</code> / <code>Rollback</code> 二次确认与脱敏审计日志。</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 3 分钟快速上手
 
 ### 方式 A：Docker Compose + Cloudflare Tunnel（推荐）
 
 [`docker/docker-compose.yml`](docker/docker-compose.yml) 启动的 `gateway` 容器**不向宿主机暴露任何公网端口**（仅内部 `expose: ["8787"]`），全部外部 HTTPS 流量由 `cloudflared` 隧道安全引入。
 
-1. **复制环境变量模板**：
+1. **克隆仓库并初始化 `.env`**：
    ```bash
+   git clone https://github.com/Kaiserunix/gemini-bastion-mcp.git
+   cd gemini-bastion-mcp
    cp .env.example .env
    ```
 
 2. **生成 `ADMIN_PASSWORD_HASH`（`scrypt:`）与 `OAUTH_SIGNING_SECRET`**：
-   生产环境推荐无 `$` 符号、可安全用于 Docker Compose 的 `scrypt:<saltHex>:<keyHex>` 与 `sha256:<hex>` 格式（同时兼容 `scrypt$<saltHex>$<keyHex>` 与 `sha256$<hex>`；若在 Docker Compose `.env` 中使用 `$` 格式需转义为 `$$`）。使用 Node 22 一行命令生成 `scrypt:` 哈希：
+   生产环境推荐无 `$` 符号、可安全用于 Docker Compose 的 `scrypt:<saltHex>:<keyHex>` 与 `sha256:<hex>` 格式（同时兼容 `scrypt$<saltHex>$<keyHex>` 与 `sha256$<hex>`；若在 Docker Compose `.env` 中使用 `$` 格式需转义为 `$$`）：
    ```bash
    node -e 'const c=require("node:crypto"),s=c.randomBytes(16).toString("hex");console.log(`scrypt:${s}:${c.scryptSync(process.argv[1],s,32,{N:16384,r:8,p:1}).toString("hex")}`)' 'your-admin-password'
    ```
-   生成 32 字节 `OAUTH_SIGNING_SECRET`：
    ```bash
    node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
    ```
 
-3. **填写 `.env` 关键配置**：
-   - `PUBLIC_DOMAIN=https://mcp.yourdomain.com`
-   - `TRUST_CF_CONNECTING_IP=true`
-   - `OAUTH_SIGNING_SECRET=<上一步生成的随机十六进制串>`
-   - `ADMIN_PASSWORD_HASH=<上一步生成的 scrypt:... 哈希>`
-   - `CLOUDFLARE_TUNNEL_TOKEN=<Cloudflare Zero Trust Tunnel Token>`
-   - 按需填写集成凭据：`GH_TOKEN`、`OPENAI_API_KEY` / `CODEX_API_KEY`、`CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_READONLY_API_TOKEN`、`CLOUDFLARE_API_TOKEN`
-
-4. **配置 Cloudflare Tunnel 路由**：在 Cloudflare Zero Trust 控制台（Networks -> Tunnels）添加 Public Hostname（如 `mcp.yourdomain.com`），指向 `http://gateway:8787`，并将 `CLOUDFLARE_TUNNEL_TOKEN=<token>` 写入 `docker/.env`（或在 Shell 中 export）。
-
-5. **构建并启动容器栈**：
+3. **填写 `.env` 关键配置**，在 Cloudflare Zero Trust 控制台将 Public Hostname（如 `mcp.yourdomain.com`）指向 `http://gateway:8787`，并将 `CLOUDFLARE_TUNNEL_TOKEN=<token>` 写入 `docker/.env`（或在 Shell 中 export）：
    ```bash
    docker compose -f docker/docker-compose.yml up -d --build
    ```
-   > **关于 Docker Compose `.env` 转义的提示**：使用 `scrypt:<saltHex>:<keyHex>` 可彻底避免 Docker Compose 对 `$` 做变量插值；若在 `.env` 中使用旧版 `scrypt$...` 格式，请将每个 `$` 转义为 `$$`。
-   > **Node 22 安全基线**：[`docker/Dockerfile`](docker/Dockerfile) 在构建期强制校验 `Node >= 22.23.4`。若本地缓存的基础镜像版本偏旧，可在 `docker/.env` 中设置 `NODE_IMAGE=node:22.23.4-bookworm-slim` 或使用 `--pull` 重新构建。注意 `cloudflared` 仅接收 `TUNNEL_TOKEN`（不会挂载 `../.env`）。
+
+> [!IMPORTANT]
+> **Node 22 安全基线**：[`docker/Dockerfile`](docker/Dockerfile) 在构建期强制校验 `Node >= 22.23.4`。可在 `docker/.env` 中固定 `NODE_IMAGE=node:22.23.4-bookworm-slim` 或传递 `--build-arg`。注意 `cloudflared` 仅接收 `TUNNEL_TOKEN`（不会挂载 `../.env`）。
+
+<details>
+<summary><strong>环境变量参考 (.env)</strong></summary>
+
+| 变量名 | 说明 |
+| :--- | :--- |
+| `PUBLIC_DOMAIN` | 网关公网 HTTPS Origin（例如 `https://mcp.yourdomain.com`） |
+| `TRUST_CF_CONNECTING_IP` | Cloudflare Tunnel/CDN 后设为 `true`；直连 Nginx 时设为 `false` |
+| `OAUTH_SIGNING_SECRET` | `>= 32` 字节随机 hex/base64 密钥（`NODE_ENV=production` 拒绝占位符） |
+| `ADMIN_PASSWORD_HASH` | `scrypt:<saltHex>:<keyHex>`（推荐）或 `sha256:<hex>` |
+| `OAUTH_STATIC_CLIENT_ID` / `_SECRET` | 可选静态 OAuth 客户端凭据（供不支持 DCR 的客户端兜底） |
+| `GOOGLE_OAUTH_*` / `GITHUB_OAUTH_*` | 可选 Fail-Closed 上游管理员 SSO 凭据与白名单 |
+| `GH_TOKEN` | GitHub PAT（仅限网关进程；严禁暴露给 `workspace_exec` 或 Codex） |
+| `CLOUDFLARE_ACCOUNT_ID` / `_READONLY_API_TOKEN` / `_API_TOKEN` | Cloudflare 账号与只读/写入分离 Token |
+| `OPENAI_API_KEY` / `CODEX_API_KEY` | OpenAI / Codex SDK 执行引擎凭据（`CODEX_DEFAULT_MODEL`、`CODEX_TOKEN_BUDGET`） |
+| `NOTIFY_WEBHOOK_URL` | 可选 Webhook 通知 URL（推送经脱敏的任务与变更状态） |
+| `DOWNSTREAM_MCPS_FILE` / `_JSON` | 可选下游 MCP-2 联邦配置 |
+
+</details>
 
 ### 方式 B：Nginx 反向代理部署（本机回环端口）
 
-如果你已有带 TLS 证书的 VPS 并使用 Nginx 反代（不使用 Cloudflare Tunnel）：
+通过 `docker-compose.override.yml` 将 `gateway` 仅绑定到宿主机回环地址（如 `127.0.0.1:8787:8787` 或 `127.0.0.1:39120:8787`），在 `.env` 设 `TRUST_CF_CONNECTING_IP=false`，并仅启动 `gateway` 服务：
 
-1. 通过 `docker-compose.override.yml` 将 `gateway` 仅绑定到宿主机回环地址（如 `127.0.0.1:8787:8787` 或 `127.0.0.1:39120:8787`），若前端未套 Cloudflare 请在 `.env` 设 `TRUST_CF_CONNECTING_IP=false`，并仅启动 `gateway` 服务：
-   ```bash
-   docker compose -f docker/docker-compose.yml up -d --build gateway
-   ```
-2. 在 Nginx 中关闭缓冲以支持 Streamable HTTP 与 `/admin` SSE 流式推送：
-   ```nginx
-   location / {
-     proxy_pass http://127.0.0.1:8787;
-     proxy_http_version 1.1;
-     proxy_set_header Host $host;
-     proxy_set_header X-Real-IP $remote_addr;
-     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-     proxy_set_header X-Forwarded-Proto $scheme;
-     proxy_buffering off;
-     proxy_read_timeout 300s;
-   }
-   ```
+```bash
+docker compose -f docker/docker-compose.yml up -d --build gateway
+```
+
+<details>
+<summary><strong>Nginx 反向代理配置示例（支持 Streamable HTTP、SSE 与 8KB OAuth State）</strong></summary>
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name mcp.yourdomain.com;
+
+  # 必须调大请求头缓冲，确保 Gemini 的 2400-8192 字节 OAuth state 不会触发 414 Request-URI Too Large
+  large_client_header_buffers 4 16k;
+  client_max_body_size 1m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_read_timeout 300s;
+  }
+}
+```
+
+</details>
 
 ### 方式 C：本地开发模式
-
-**环境要求**：Node.js `>= 22.23.4`、`git`，以及编译 `better-sqlite3` 所需的 C++ 构建工具。
 
 ```bash
 npm install
@@ -193,7 +244,7 @@ npm test
 npm run dev
 ```
 
-启动后访问 `http://127.0.0.1:8787/healthz` 与 `http://127.0.0.1:8787/` 验证服务在线。`npm run dev` 与 `npm start` 均通过 Node 原生 `--env-file-if-exists=.env` 自动加载 `.env`。
+访问 `http://127.0.0.1:8787/healthz` 与 `http://127.0.0.1:8787/` 验证服务在线。`npm run dev` 与 `npm start` 均通过 Node 原生 `--env-file-if-exists=.env` 自动加载 `.env`。
 
 ---
 
@@ -201,23 +252,13 @@ npm run dev
 
 `GeminiBastionMCP` 遵循 **MCP 2025-11-25 Streamable HTTP** 规范（无状态 `/mcp`，彻底摒弃旧版 HTTP+SSE），支持 **OAuth 2.1 + PKCE (`S256`) + RFC 8707 Resource Indicators + RFC 9728 Protected Resource Metadata**。
 
-### Web Gemini（`gemini.google.com` Connected Apps）
-
-1. 确认 `PUBLIC_DOMAIN` 与公网 HTTPS 域名一致，且 `OAUTH_ALLOWED_REDIRECT_HOSTS` 包含 `gemini.google.com,aistudio.google.com,accounts.google.com`（`.env.example` 已默认配置）。
-2. 在 Gemini Connected Apps / 自定义 MCP 连接器中填写端点 URL：
-   ```text
-   https://mcp.yourdomain.com/mcp
-   ```
-3. Gemini 会自动发现 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-authorization-server`，并通过 `POST /oauth/register` 完成动态客户端注册（支持单客户端最多 **16 个 Redirect URIs** 与高达 **8192 字节**的 `state` 参数）。
-4. 在浏览器中完成 OAuth 授权确认即可。Refresh Token 每次刷新自动轮换，并提供 60 秒并发重试宽限期。
-
-### Claude.ai、ChatGPT 与 MCP Inspector（DCR 或静态客户端兜底）
-
-- **自动 DCR**：直接填写 `https://mcp.yourdomain.com/mcp` 即可完成自动握手。
-- **静态客户端兜底**：如果客户端需要预置凭据，在 `.env` 中配置 `OAUTH_STATIC_CLIENT_ID` 与 `OAUTH_STATIC_CLIENT_SECRET` 并重启 `gateway`，随后填入：
-  - **MCP URL**：`https://mcp.yourdomain.com/mcp`
-  - **Authorization URL**：`https://mcp.yourdomain.com/oauth/authorize`
-  - **Token URL**：`https://mcp.yourdomain.com/oauth/token`
+- **Web Gemini（`gemini.google.com` Connected Apps）**：
+  1. 确认 `PUBLIC_DOMAIN` 与公网 HTTPS 域名一致，且 `OAUTH_ALLOWED_REDIRECT_HOSTS` 包含 `gemini.google.com,aistudio.google.com,accounts.google.com`（`.env.example` 已默认配置）。
+  2. 在 Gemini Connected Apps / 自定义 MCP 连接器中填写 `https://mcp.yourdomain.com/mcp`。
+  3. Gemini 自动发现 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-authorization-server`，并通过 `POST /oauth/register` 完成动态客户端注册（支持单客户端最多 **16 个 Redirect URIs** 与高达 **8192 字节** `state`）。
+- **Claude.ai Custom Connectors、ChatGPT MCP 与 MCP Inspector**：
+  - **自动 DCR**：直接填写 `https://mcp.yourdomain.com/mcp`。
+  - **静态客户端兜底**：在 `.env` 配置 `OAUTH_STATIC_CLIENT_ID` 与 `OAUTH_STATIC_CLIENT_SECRET` 并重启 `gateway`，授权端点为 `/oauth/authorize`，令牌端点为 `/oauth/token`。
 
 ---
 
@@ -225,37 +266,15 @@ npm run dev
 
 除 `ADMIN_PASSWORD_HASH` 密码登录外，还可以开启 **Google OAuth** 与/或 **GitHub OAuth**，在 `/admin/login` 与 `/oauth/authorize`（MCP 授权确认页）一键完成管理员身份验证：
 
-### 1. 注册回调地址（Callback URLs）
+1. **注册回调地址（Callback URLs）**：
+   - **Google Cloud Console**（OAuth 2.0 Web Application）：`https://<PUBLIC_DOMAIN>/auth/idp/google/callback`
+   - **GitHub Developer Settings**（OAuth App）：`https://<PUBLIC_DOMAIN>/auth/idp/github/callback`
+2. **在 `.env` 中配置凭据与管理员白名单**：
+   - **Google OAuth**：`GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET`、`GOOGLE_OAUTH_ALLOWED_EMAILS`
+   - **GitHub OAuth**：`GITHUB_OAUTH_CLIENT_ID`、`GITHUB_OAUTH_CLIENT_SECRET`、`GITHUB_OAUTH_ALLOWED_USERS`、可选 `GITHUB_OAUTH_ALLOWED_IDS` *（若同时配置用户与 ID，则必须同时匹配）*
 
-- **Google Cloud Console**（OAuth 2.0 Web Application -> 已获授权的重定向 URI）：
-  ```text
-  https://<PUBLIC_DOMAIN>/auth/idp/google/callback
-  ```
-- **GitHub Developer Settings**（OAuth App -> Authorization callback URL）：
-  ```text
-  https://<PUBLIC_DOMAIN>/auth/idp/github/callback
-  ```
-
-### 2. 配置环境变量（`.env`）
-
-- **Google OAuth**：
-  - `GOOGLE_OAUTH_CLIENT_ID`
-  - `GOOGLE_OAUTH_CLIENT_SECRET`
-  - `GOOGLE_OAUTH_ALLOWED_EMAILS`（逗号分隔的允许管理员邮箱白名单）
-- **GitHub OAuth**：
-  - `GITHUB_OAUTH_CLIENT_ID`
-  - `GITHUB_OAUTH_CLIENT_SECRET`
-  - `GITHUB_OAUTH_ALLOWED_USERS`（逗号分隔的允许 GitHub 用户名白名单）
-  - `GITHUB_OAUTH_ALLOWED_IDS` *（可选；若同时配置 `GITHUB_OAUTH_ALLOWED_USERS` 与 `GITHUB_OAUTH_ALLOWED_IDS`，则必须同时匹配）*
-
+> [!IMPORTANT]
 > **Fail-Closed 安全模型**：只有同时配置凭据与非空管理员白名单时 IdP 才会启用；在 `NODE_ENV=production` 下，若只填凭据而未配置白名单将直接拒绝启动（Fail-Closed）。Google 登录强制校验 `email_verified: true`，所有上游登录流程均受 PKCE `S256`、`HttpOnly` 绑定 Cookie 与 CSRF 防护保护。
-
----
-
-## 公开网关门户 (`GET /`) 与 `/admin` 移动端 PWA 控制台
-
-- **公开网关门户 (`GET /`)**：浏览器访问根路径呈现暗色主题在线状态页，提供一键复制 `/mcp` 端点、`.well-known` 元数据链接、快速接入指引与 `/admin` 入口——**严禁查询或泄漏任何私有工作区、任务、Token 或密钥信息**；请求头包含 `Accept: application/json` 时返回结构化 JSON 状态。
-- **运维指挥座舱 (`/admin`)**：使用与 `ADMIN_PASSWORD_HASH` 匹配的密码登录。支持添加到手机主屏幕（PWA），内置顶部 **4 宫格态势感知条**（`Active Jobs`、`Staged Plans`、`Workspaces`、`OAuth Sessions`）、顶栏一键复制 `/mcp` 地址、SSE 实时日志与 `[Expand / Collapse]` 展开、危险操作（`Kill`、`Rollback`、`Revoke`、`Delete Client`）二次确认以及脱敏审计日志。
 
 ---
 
@@ -270,35 +289,45 @@ npm run dev
 
 ---
 
-## 可选 `ops-mcp` 运维 Sidecar 联邦（MCP-2）
+## 可选 `ops-mcp` 运维 Sidecar 联邦（MCP-2）与 Webhook
 
 在完全不向 `/workspaces` 暴露 SSH 私钥的前提下，通过内部隔离网络 `ops_net` 联邦调用下游 HTTP 或本地 `stdio` MCP 服务（例如经 `mcp-proxy` 桥接的 `uarlouski/ssh-mcp-server`）：
 
+- 在 `.env` 中设置 `NOTIFY_WEBHOOK_URL`，即可在后台任务完成/失败/取消或变更计划执行/回滚时接收脱敏 JSON POST 通知。
+- 使用 `ops` profile 启动（`docker compose -f docker/docker-compose.yml --profile ops up -d --build`），搭配 [`docker/Dockerfile.ops-mcp`](docker/Dockerfile.ops-mcp) 与 [`docker/ops-mcp-config.example.json`](docker/ops-mcp-config.example.json)：
+  - `readonlyTools` 可在 `infra_inspect` 中直接调用
+  - `mutatingTools` 必须经 `stage_mutation_plan` 暂存后再由 `publish_changes` 审批执行
+  - `deniedTools` 及未登记工具一律拒绝
+
+<details>
+<summary><strong>DOWNSTREAM_MCPS_FILE 配置示例 (docker/ops-mcp-config.example.json)</strong></summary>
+
 1. 创建 `docker/ops-ssh/` 目录并放入受限的 `config.json` 与最小权限 SSH 密钥。
-2. 复制 [`docker/ops-mcp-config.example.json`](docker/ops-mcp-config.example.json) 为 `docker/ops-mcp-config.json`，按需配置 `readonlyTools`、`mutatingTools` 与 `deniedTools` 策略清单。
-3. 在 [`docker/docker-compose.yml`](docker/docker-compose.yml) 中取消 `./ops-mcp-config.json:/etc/gemini-bastion/ops-mcp-config.json:ro` 挂载行的注释，并在 `.env` 设置 `DOWNSTREAM_MCPS_FILE=/etc/gemini-bastion/ops-mcp-config.json`。
-4. 使用 `ops` profile 构建并启动（基于 [`docker/Dockerfile.ops-mcp`](docker/Dockerfile.ops-mcp) 预装二进制，可在 `internal: true` 的离线 `ops_net` 中以非 root `node` 用户运行）：
-   ```bash
-   docker compose -f docker/docker-compose.yml --profile ops up -d --build
-   ```
+2. 复制 `docker/ops-mcp-config.example.json` 为 `docker/ops-mcp-config.json`。
+3. 在 `docker/docker-compose.yml` 中取消 `./ops-mcp-config.json:/etc/gemini-bastion/ops-mcp-config.json:ro` 挂载注释，并在 `.env` 设置 `DOWNSTREAM_MCPS_FILE=/etc/gemini-bastion/ops-mcp-config.json`。
 
-**策略执行**：`readonlyTools` 可在 `infra_inspect` 中直接调用；`mutatingTools` 必须经 `stage_mutation_plan` 暂存后再由 `publish_changes` 审批执行；`deniedTools` 及未登记工具一律拒绝。
+```json
+[
+  {
+    "id": "ops-ssh",
+    "transport": "http",
+    "url": "http://ops-mcp:8090/mcp",
+    "enabled": true,
+    "timeoutMs": 30000,
+    "readonlyTools": ["list_hosts", "read_file", "list_directory", "get_host_status"],
+    "mutatingTools": ["exec_command", "write_file", "upload_file"],
+    "deniedTools": ["delete_file", "remove_directory", "create_tunnel", "raw_sudo_shell"]
+  }
+]
+```
+
+</details>
 
 ---
 
-## Webhook 通知
+## 路线图、贡献与安全规范
 
-在 `.env` 中设置 `NOTIFY_WEBHOOK_URL`，即可在后台任务完成/失败/取消或基础设施变更计划执行/回滚时，接收经 `SecretScrubber` 脱敏的 JSON POST 通知。
-
----
-
-## 开源发布前 GitHub 仓库配置与配图清单
-
-发布到 GitHub 时建议配置以下仓库信息：
-
-- **About 简介**：`Self-hosted OAuth 2.1 Streamable HTTP MCP bastion for Web Gemini, Claude & ChatGPT. Sandboxed git workspaces, Codex SDK, Cloudflare ops & 10-tool/1-gate funnel.`
-- **Topics 标签**：`mcp`, `model-context-protocol`, `gemini`, `claude`, `codex`, `oauth21`, `streamable-http`, `cloudflare-tunnel`, `ai-agents`, `devops`, `self-hosted`, `typescript`
-- **建议补充的演示素材**（放置于 `docs/assets/`）：
-  - `demo-gemini-pr.gif` — 15 秒实录：Web Gemini 从 `code_explore` -> `code_patch` -> 唯一一次 `publish_changes` 确认并创建 GitHub PR
-  - `portal-and-oauth.png` — `GET /` 公开网关着陆页与 OAuth 2.1 授权页截图
-  - `admin-mobile-pwa.png` — 手机端 `/admin` PWA 指挥座舱截图（展示 4 宫格 KPI 与 SSE 实时日志流）
+- **路线图**：每任务独立容器 / microVM 隔离沙盒（`v0.2`）、`@openai/codex-sdk` 独立 Sidecar 进程以及多管理员 RBAC 策略。
+- **参与贡献**：请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发环境配置、架构红线与 PR 检查清单。
+- **安全政策**：请参阅 [SECURITY.md](SECURITY.md) 了解安全模型与漏洞私密上报方式。
+- **版本记录与开源协议**：[CHANGELOG.md](CHANGELOG.md) · [MIT License](LICENSE)

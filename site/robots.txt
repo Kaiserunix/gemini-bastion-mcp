@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kaiserunix.github.io/gemini-bastion-mcp/sitemap.xml

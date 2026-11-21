@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" width="1280" height="360" role="img" aria-label="GeminiBastionMCP Hero Banner">
+  <defs>
+    <linearGradient id="heroBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1020" />
+      <stop offset="55%" stop-color="#111a33" />
+      <stop offset="100%" stop-color="#0b1020" />
+    </linearGradient>
+    <radialGradient id="blueGlow" cx="82%" cy="22%" r="55%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.26" />
+      <stop offset="100%" stop-color="#0b1020" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="greenGlow" cx="15%" cy="80%" r="48%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.16" />
+      <stop offset="100%" stop-color="#0b1020" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="shieldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+    <linearGradient id="cardSurface" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#15203b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background & Outer Frame -->
+  <rect width="1280" height="360" rx="22" fill="url(#heroBg)" />
+  <rect width="1280" height="360" rx="22" fill="url(#blueGlow)" />
+  <rect width="1280" height="360" rx="22" fill="url(#greenGlow)" />
+  <rect x="2" y="2" width="1276" height="356" rx="20" fill="none" stroke="#233054" stroke-width="2" />
+
+  <!-- Subtle Technical Grid Lines -->
+  <g stroke="#1e2b4a" stroke-width="1" opacity="0.45">
+    <line x1="0" y1="72" x2="1280" y2="72" />
+    <line x1="0" y1="180" x2="1280" y2="180" />
+    <line x1="0" y1="288" x2="1280" y2="288" />
+    <line x1="256" y1="0" x2="256" y2="360" />
+    <line x1="880" y1="0" x2="880" y2="360" />
+  </g>
+
+  <!-- Left Geometric Bastion Shield Emblem -->
+  <g transform="translate(64, 68)">
+    <rect x="0" y="0" width="184" height="184" rx="36" fill="url(#cardSurface)" stroke="#283963" stroke-width="2.5" />
+    <path d="M92 28 L144 48 V92 C144 127 121 151 92 162 C63 151 40 127 40 92 V48 Z" fill="#0b1224" stroke="url(#shieldBorder)" stroke-width="5" stroke-linejoin="round" />
+    <path d="M66 75 L92 61 L118 75 V107 L92 123 L66 107 Z" fill="none" stroke="#60a5fa" stroke-width="4" stroke-linejoin="round" />
+    <circle cx="92" cy="92" r="12" fill="#3b82f6" />
+    <circle cx="92" cy="92" r="5" fill="#e6ecff" />
+    <!-- Status badge below shield -->
+    <rect x="26" y="198" width="132" height="28" rx="14" fill="#0d2824" stroke="#10b981" stroke-width="1.5" />
+    <circle cx="46" cy="212" r="5" fill="#10b981" />
+    <text x="60" y="217" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="700">v0.1.0 · ONLINE</text>
+  </g>
+
+  <!-- Center Brand Headline & Subtitle -->
+  <g transform="translate(284, 78)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif">
+    <!-- Top Eyebrow Pill -->
+    <rect x="0" y="0" width="388" height="28" rx="14" fill="#131f3a" stroke="#3b82f6" stroke-width="1.2" />
+    <text x="16" y="18" fill="#93c5fd" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="700">MCP 2025-11-25 STREAMABLE HTTP · OAUTH 2.1 + PKCE + DCR</text>
+
+    <!-- Main Title -->
+    <text x="0" y="82" fill="#f8fafc" font-size="52" font-weight="800" letter-spacing="-1">GeminiBastionMCP</text>
+    <text x="488" y="76" fill="#60a5fa" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="600">gemini-bastion-mcp</text>
+
+    <!-- Subtitle -->
+    <text x="0" y="122" fill="#cbd5e1" font-size="20" font-weight="600">Remote OAuth 2.1 Streamable HTTP MCP Bastion · 10 Tools · 1 Approval Gate</text>
+    <text x="0" y="152" fill="#93a3c8" font-size="15">Sandboxed Git Workspaces · @openai/codex-sdk Runner · Two-Phase Cloudflare Ops · Zero Secret Leakage</text>
+
+    <!-- Capability Pill Badges Row -->
+    <g transform="translate(0, 178)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="600">
+      <rect x="0" y="0" width="114" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
+      <circle cx="18" cy="16" r="4.5" fill="#3b82f6" />
+      <text x="30" y="20" fill="#e6ecff">Web Gemini</text>
+
+      <rect x="124" y="0" width="106" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
+      <circle cx="142" cy="16" r="4.5" fill="#60a5fa" />
+      <text x="154" y="20" fill="#e6ecff">Claude.ai</text>
+
+      <rect x="240" y="0" width="96" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
+      <circle cx="258" cy="16" r="4.5" fill="#10b981" />
+      <text x="270" y="20" fill="#e6ecff">ChatGPT</text>
+
+      <rect x="346" y="0" width="108" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
+      <circle cx="364" cy="16" r="4.5" fill="#f59e0b" />
+      <text x="376" y="20" fill="#e6ecff">Codex SDK</text>
+
+      <rect x="464" y="0" width="112" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
+      <circle cx="482" cy="16" r="4.5" fill="#fb923c" />
+      <text x="494" y="20" fill="#e6ecff">Cloudflare</text>
+
+      <rect x="586" y="0" width="168" height="32" rx="10" fill="#131a2e" stroke="#10b981" stroke-width="1.5" />
+      <circle cx="604" cy="16" r="4.5" fill="#10b981" />
+      <text x="616" y="20" fill="#86efac">Google/GitHub SSO</text>
+
+      <rect x="764" y="0" width="128" height="32" rx="10" fill="#0d2824" stroke="#10b981" stroke-width="1.5" />
+      <text x="780" y="20" fill="#86efac">59/59 Tests ✓</text>
+    </g>
+  </g>
+</svg>
