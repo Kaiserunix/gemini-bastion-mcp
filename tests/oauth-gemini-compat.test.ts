@@ -316,7 +316,17 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     expect(tokenBody.access_token).toBeTruthy();
     expect(tokenBody.refresh_token).toBeTruthy();
 
-    // Single-use code replay rejected
+    // Access /mcp with issued Bearer token
+    const mcpRes = await app.request('https://mcp.example.com/mcp', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+    });
+    expect(mcpRes.status).toBe(200);
+    const mcpJson = (await mcpRes.json()) as { ok: boolean; auth: { clientId: string } };
+    expect(mcpJson.ok).toBe(true);
+    expect(mcpJson.auth.clientId).toBe(clientId);
+
+    // Single-use code replay rejected AND revokes previously issued token family (OAuth 2.1 §4.1.2)
     const replayCodeRes = await app.request('https://mcp.example.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -330,15 +340,11 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     });
     expect(replayCodeRes.status).toBe(400);
 
-    // Access /mcp with issued Bearer token
-    const mcpRes = await app.request('https://mcp.example.com/mcp', {
+    const revokedMcpRes = await app.request('https://mcp.example.com/mcp', {
       method: 'POST',
       headers: { Authorization: `Bearer ${tokenBody.access_token}` },
     });
-    expect(mcpRes.status).toBe(200);
-    const mcpJson = (await mcpRes.json()) as { ok: boolean; auth: { clientId: string } };
-    expect(mcpJson.ok).toBe(true);
-    expect(mcpJson.auth.clientId).toBe(clientId);
+    expect(revokedMcpRes.status).toBe(401);
   });
 
   it('enforces RFC 8707 resource indicators across /authorize, /token, and /mcp middleware', async () => {

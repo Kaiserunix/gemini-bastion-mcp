@@ -62,6 +62,14 @@ export interface GatewayConfig {
   workspaceExecMaxWaitMs: number;
   mutationPlanTtlSec: number;
 
+  auditLogFilePath?: string;
+  mcpRateLimitMaxRequests?: number;
+  mcpRateLimitWindowMs?: number;
+  circuitBreakerFailureThreshold?: number;
+  circuitBreakerResetTimeoutMs?: number;
+  securityPolicyJson?: string;
+  securityPolicyFile?: string;
+
   sandboxUid?: number;
   sandboxGid?: number;
 }
@@ -102,6 +110,7 @@ export interface OAuthCode {
   resource: string | null;
   expires_at: number;
   used: boolean;
+  issued_family_id?: string | null;
 }
 
 export type OAuthTokenType = 'access' | 'refresh';

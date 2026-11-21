@@ -1,7 +1,5 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import type { AuditRepository } from '../db/repositories/auditRepo.js';
-import type { OAuthRepository } from '../db/repositories/oauthRepo.js';
 import type { GatewayDatabase } from '../db/sqlite.js';
 import type { GatewayConfig, OAuthClient } from '../types.js';
 import {
@@ -13,14 +11,17 @@ import {
 } from './crypto.js';
 import { getCanonicalResource, isValidResource } from './discovery.js';
 import { getClientIp, IpRateLimiter, readLimitedBodyText } from './rateLimit.js';
+import type { AuditLogger, OAuthStore, RateLimiter } from './store.js';
 
 export interface TokenDeps {
   config: GatewayConfig;
   db?: GatewayDatabase;
-  oauthRepo: OAuthRepository;
-  auditRepo?: AuditRepository;
-  tokenRateLimiter?: IpRateLimiter;
-  revokeRateLimiter?: IpRateLimiter;
+  oauthStore?: OAuthStore;
+  oauthRepo?: OAuthStore;
+  auditRepo?: AuditLogger;
+  auditLogger?: AuditLogger;
+  tokenRateLimiter?: RateLimiter;
+  revokeRateLimiter?: RateLimiter;
 }
 
 type ParamMap = Record<string, string | undefined>;
@@ -81,28 +82,81 @@ async function parseTokenParams(c: Context): Promise<ParseParamsResult> {
   return { ok: true, params: out };
 }
 
-function extractClientCredentials(c: Context, params: ParamMap): {
-  clientId?: string;
-  clientSecret?: string;
-} {
+type ExtractedClientCredentials =
+  | {
+      ok: true;
+      clientId?: string;
+      clientSecret?: string;
+    }
+  | {
+      ok: false;
+      status: 400 | 401;
+      error: string;
+      description: string;
+    };
+
+function extractClientCredentials(c: Context, params: ParamMap): ExtractedClientCredentials {
   let clientId = params.client_id;
   let clientSecret = params.client_secret;
 
   const authHeader = c.req.header('authorization');
-  if (!clientId && authHeader && authHeader.toLowerCase().startsWith('basic ')) {
-    try {
-      const decoded = Buffer.from(authHeader.slice(6).trim(), 'base64').toString('utf8');
-      const colonIdx = decoded.indexOf(':');
-      if (colonIdx > 0) {
-        clientId = decodeURIComponent(decoded.slice(0, colonIdx));
-        clientSecret = decodeURIComponent(decoded.slice(colonIdx + 1));
-      }
-    } catch {
-      // Ignore malformed Basic header
+  if (authHeader && authHeader.toLowerCase().startsWith('basic ')) {
+    const rawB64 = authHeader.slice(6).trim();
+    if (!rawB64 || !/^[A-Za-z0-9+/=]+$/.test(rawB64)) {
+      return {
+        ok: false,
+        status: 401,
+        error: 'invalid_client',
+        description: 'Malformed HTTP Basic Authorization header',
+      };
     }
+
+    let basicId = '';
+    let basicSecret = '';
+    try {
+      const decoded = Buffer.from(rawB64, 'base64').toString('utf8');
+      const colonIdx = decoded.indexOf(':');
+      if (colonIdx <= 0) {
+        return {
+          ok: false,
+          status: 401,
+          error: 'invalid_client',
+          description: 'Malformed HTTP Basic Authorization credentials',
+        };
+      }
+      basicId = decodeURIComponent(decoded.slice(0, colonIdx));
+      basicSecret = decodeURIComponent(decoded.slice(colonIdx + 1));
+    } catch {
+      return {
+        ok: false,
+        status: 401,
+        error: 'invalid_client',
+        description: 'Malformed HTTP Basic Authorization encoding',
+      };
+    }
+
+    if (clientId && clientId !== basicId) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'invalid_request',
+        description: 'Conflicting client_id between Basic header and request body',
+      };
+    }
+    if (clientSecret && clientSecret !== basicSecret) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'invalid_request',
+        description: 'Conflicting client_secret between Basic header and request body',
+      };
+    }
+
+    clientId = basicId;
+    clientSecret = basicSecret;
   }
 
-  return { clientId, clientSecret };
+  return { ok: true, clientId, clientSecret };
 }
 
 function authenticateClient(
@@ -140,13 +194,19 @@ function oauthError(
  * Mounts `POST /oauth/token` and `POST /oauth/revoke`.
  */
 export function createTokenRoutes(deps: TokenDeps): Hono {
-  const { config, db, oauthRepo, auditRepo } = deps;
+  const { config, db } = deps;
+  const oauthRepo = deps.oauthStore ?? deps.oauthRepo;
+  if (!oauthRepo) {
+    throw new Error('createTokenRoutes requires oauthStore or oauthRepo');
+  }
+  const auditRepo = deps.auditLogger ?? deps.auditRepo;
   const tokenRateLimiter = deps.tokenRateLimiter ?? new IpRateLimiter(120, 60_000);
   const revokeRateLimiter = deps.revokeRateLimiter ?? new IpRateLimiter(60, 60_000);
   const canonicalResource = getCanonicalResource(config.publicDomain);
   const app = new Hono();
 
-  const runTx = <T>(fn: () => T): T => (db ? db.transaction(fn)() : fn());
+  const runTx = <T>(fn: () => T): T =>
+    db ? db.transaction(fn)() : oauthRepo.runInTransaction(fn);
 
   app.post('/oauth/token', async (c) => {
     const ip = getClientIp(c, config.trustCfConnectingIp);
@@ -177,7 +237,11 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
       );
     }
 
-    const { clientId, clientSecret } = extractClientCredentials(c, params);
+    const creds = extractClientCredentials(c, params);
+    if (!creds.ok) {
+      return oauthError(c, creds.status, creds.error, creds.description);
+    }
+    const { clientId, clientSecret } = creds;
 
     if (grantType === 'authorization_code') {
       const code = params.code;
@@ -209,7 +273,38 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
       const issueResult = runTx((): AuthCodeIssueResult => {
         const now = Date.now();
         const authCode = oauthRepo.getCode(code);
-        if (!authCode || authCode.used || authCode.expires_at <= now) {
+        if (!authCode) {
+          return {
+            ok: false,
+            status: 400,
+            error: 'invalid_grant',
+            description: 'Authorization code is invalid, expired, or already used',
+          };
+        }
+
+        // OAuth 2.1 §4.1.2: Replay of an already-used authorization code revokes
+        // the entire token family previously issued from that code.
+        if (authCode.used) {
+          if (authCode.issued_family_id) {
+            oauthRepo.revokeTokenFamily(authCode.issued_family_id);
+            auditRepo?.record({
+              actor: client.client_id,
+              action: 'oauth_code_replay',
+              target: authCode.issued_family_id,
+              status: 'denied',
+              details: { reason: 'authorization_code_reused' },
+              created_at: now,
+            });
+          }
+          return {
+            ok: false,
+            status: 400,
+            error: 'invalid_grant',
+            description: 'Authorization code is invalid, expired, or already used',
+          };
+        }
+
+        if (authCode.expires_at <= now) {
           return {
             ok: false,
             status: 400,
@@ -277,6 +372,7 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
         }
 
         const familyId = generateRandomHex(16);
+        oauthRepo.setCodeIssuedFamily(code, familyId);
         const accessToken = generateRandomToken(32);
         const refreshToken = generateRandomToken(32);
 
@@ -348,6 +444,7 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
     // grant_type === 'refresh_token'
     const rawRefreshToken = params.refresh_token;
     const requestedResource = params.resource;
+    const requestedScope = params.scope;
     if (!rawRefreshToken) {
       return oauthError(c, 400, 'invalid_request', 'Missing refresh_token');
     }
@@ -478,6 +575,21 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
         effectiveResource = requestedResource;
       }
 
+      let effectiveScope = tokenRecord.scope;
+      if (requestedScope !== undefined && requestedScope.trim().length > 0) {
+        const grantedSet = new Set(tokenRecord.scope.split(/\s+/).filter(Boolean));
+        const requestedTokens = requestedScope.trim().split(/\s+/).filter(Boolean);
+        if (requestedTokens.some((tok) => !grantedSet.has(tok))) {
+          return {
+            ok: false,
+            status: 400,
+            error: 'invalid_scope',
+            description: 'Requested scope exceeds originally granted scope',
+          };
+        }
+        effectiveScope = Array.from(new Set(requestedTokens)).join(' ');
+      }
+
       if (tokenRecord.grace_expires_at === null) {
         oauthRepo.setRefreshTokenGrace(
           tokenRecord.token_hash,
@@ -492,7 +604,7 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
         token_hash: hashToken(nextAccessToken),
         token_type: 'access',
         client_id: client.client_id,
-        scope: tokenRecord.scope,
+        scope: effectiveScope,
         resource: effectiveResource,
         token_family_id: tokenRecord.token_family_id,
         expires_at: now + config.oauthAccessTokenTtlSec * 1000,
@@ -504,7 +616,7 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
         token_hash: hashToken(nextRefreshToken),
         token_type: 'refresh',
         client_id: client.client_id,
-        scope: tokenRecord.scope,
+        scope: effectiveScope,
         resource: effectiveResource,
         token_family_id: tokenRecord.token_family_id,
         expires_at: now + config.oauthRefreshTokenTtlSec * 1000,
@@ -520,6 +632,7 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
         details: {
           within_grace: tokenRecord.grace_expires_at !== null,
           resource: effectiveResource,
+          scope: effectiveScope,
         },
         created_at: now,
       });
@@ -528,7 +641,7 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
         ok: true,
         accessToken: nextAccessToken,
         refreshToken: nextRefreshToken,
-        scope: tokenRecord.scope,
+        scope: effectiveScope,
       };
     });
 
@@ -576,7 +689,11 @@ export function createTokenRoutes(deps: TokenDeps): Hono {
       return oauthError(c, 400, 'invalid_request', 'Missing token parameter');
     }
 
-    const { clientId, clientSecret } = extractClientCredentials(c, params);
+    const creds = extractClientCredentials(c, params);
+    if (!creds.ok) {
+      return oauthError(c, creds.status, creds.error, creds.description);
+    }
+    const { clientId, clientSecret } = creds;
     if (clientId) {
       const client = oauthRepo.getClient(clientId);
       if (client && client.client_secret_hash !== null && !authenticateClient(client, clientSecret)) {
