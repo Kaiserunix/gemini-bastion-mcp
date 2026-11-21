@@ -1,10 +1,10 @@
 # `GeminiBastionMCP` (`gemini-bastion-mcp`) — Architecture Specification
 
-> See [docs/INDEX.md](docs/INDEX.md) for the documentation map and [.agents/rules/architecture-guardrails.md](.agents/rules/architecture-guardrails.md) for mandatory invariants.
+> See [docs/INDEX.md](docs/INDEX.md) for the documentation map, [.agents/rules/architecture-guardrails.md](.agents/rules/architecture-guardrails.md) for mandatory invariants, and [docs/GEMINI_GEM_PROMPT.md](docs/GEMINI_GEM_PROMPT.md) for the ready-to-paste client system prompt.
 
 ## 1. Overview, Runtime Stack & Validated Commands
 
-`GeminiBastionMCP` is a self-hosted, single-operator **MCP 2025-11-25** bastion gateway for web/mobile AI clients (`gemini.google.com` Connected Apps, Claude.ai, ChatGPT, and MCP Inspector), pairing stateless Streamable HTTP (`/mcp`) and OAuth 2.1/PKCE/DCR with dual-UID workspace sandboxing, `@openai/codex-sdk` job orchestration, and a 10-tool / 1-approval-gate mutation funnel.
+`GeminiBastionMCP` (`v0.3.0`) is a self-hosted, single-operator **MCP 2025-11-25** bastion gateway for web/mobile AI clients (`gemini.google.com` Connected Apps, Claude.ai Custom Connectors, ChatGPT MCP Connectors, and MCP Inspector), pairing stateless Streamable HTTP (`/mcp`) and OAuth 2.1/PKCE/DCR with dual-UID + `bwrap` per-workspace sandboxing, pluggable multi-agent drivers (`@openai/codex-sdk`, Claude Code CLI, Gemini CLI, OpenCode CLI), cross-session SQLite workspace memory, built-in MCP instructions & Prompts, an optional read-only GitHub CI Watchdog, and a 10-tool / 1-approval-gate mutation funnel.
 
 | Layer | Technology / Baseline |
 |---|---|
@@ -16,13 +16,14 @@
 | Tests | `vitest` (`vitest run`) |
 
 ```bash
-npm run typecheck                                                        # tsc --noEmit
-npm run build                                                            # tsc -> dist/
-npm test                                                                 # vitest run
-npm run dev                                                              # tsx --env-file-if-exists=.env watch src/index.ts
-npm start                                                                # node --env-file-if-exists=.env dist/index.js
-docker compose -f docker/docker-compose.yml up -d --build                # gateway + cloudflared
-docker compose -f docker/docker-compose.yml --profile ops up -d --build  # + ops-mcp sidecar
+npm run typecheck                                                               # tsc --noEmit
+npm run build                                                                   # tsc -> dist/
+npm test                                                                        # vitest run
+npm run dev                                                                     # tsx --env-file-if-exists=.env watch src/index.ts
+npm start                                                                       # node --env-file-if-exists=.env dist/index.js
+docker compose --env-file .env -f docker/docker-compose.yml up -d               # gateway + cloudflared (GHCR :lite/:full)
+docker compose --env-file .env -f docker/docker-compose.yml --profile ops up -d # + authenticated ops-mcp sidecar
+docker compose --env-file .env -f docker/docker-compose.yml --profile isolated-runner up -d # + UID 1002 agent sidecar
 ```
 
 ---
@@ -32,39 +33,45 @@ docker compose -f docker/docker-compose.yml --profile ops up -d --build  # + ops
 ```text
 src/
 ├── index.ts                      # HTTP server (@hono/node-server) + SIGINT/SIGTERM graceful shutdown (10s force exit)
-├── app.ts                        # createGatewayApp(): Hono wiring, GET /, GET /healthz, orphan job recovery, 15m cleanup timer
+├── app.ts                        # createGatewayApp(): Hono wiring, GET /, GET /healthz, /webhooks/github, orphan job recovery, 15m cleanup
 ├── config.ts                     # Zod env validation + loadConfig(env?) + fail-closed prod & path-overlap guards
-├── types.ts                      # Shared config, OAuth, workspace, job, mutation plan, validation, and MCP tool types
+├── types.ts                      # Shared config, OAuth, workspace, memory, job, mutation plan, validation, and MCP tool types
 ├── db/
-│   ├── sqlite.ts                 # WAL setup, pragmas, versioned transactional migrations (v1 + v2)
-│   └── repositories/             # oauthRepo, workspaceRepo, jobRepo, planRepo, auditRepo, index
+│   ├── sqlite.ts                 # WAL setup, pragmas, versioned transactional migrations (v1 + v2 + v3)
+│   └── repositories/             # oauthRepo, workspaceRepo, memoryRepo, jobRepo, planRepo, auditRepo, index
 ├── utils/
-│   ├── exec.ts                   # buildSandboxedEnv(), startSubprocess()/runSubprocess(), sudo UID drop, process-group kill
+│   ├── exec.ts                   # buildSandboxedEnv(), startSubprocess()/runSubprocess(), sudo UID drop, bwrap jail, process-group kill
 │   └── secretScrubber.ts         # SecretScrubber (env/config secret collection + token regex redaction)
 ├── auth/                         # Discovery, DCR, authorize, token/revoke, upstreamIdp, Bearer middleware, cookies, crypto, rateLimit
 ├── admin/                        # /admin mobile PWA UI (ui.ts) & CSRF/session-protected JSON/SSE APIs (index.ts)
+├── runner/
+│   └── sidecarServer.ts          # Optional isolated-runner HTTP sidecar (UID 1002, Bearer auth, /workspaces only)
 ├── mcp/
-│   ├── server.ts                 # Stateless Streamable HTTP /mcp handler + Origin allowlist + McpServer factory
+│   ├── server.ts                 # Stateless Streamable HTTP /mcp handler, Origin allowlist, McpServer instructions & 4 Prompts
 │   ├── landingPage.ts            # Zero-leakage GET / portal HTML/JSON + SHA-256 script CSP
 │   ├── outputGuard.ts            # withMcpGuardrails(): OAuth scope check, scrubbing, 60KB artifact offload, untrusted boundary
 │   └── tools/                    # index, context, workspaceTools (#1-#3), execRunnerTools (#4-#6), infraPublishTools (#7-#10)
 └── core/
+    ├── agentDrivers/             # Pluggable multi-agent runners (baseCliDriver, claudeCodeRunner, geminiCliRunner, openCodeRunner, remoteSidecarRunner, index)
     ├── workspaceLock.ts          # Slug validation, dual-check path/symlink sandbox, sensitive-file blacklist, FIFO RW lock
     ├── gitSnapshot.ts            # GitHub sync, stack/playbook detector, initCfOpsWorkspace, GIT_INDEX_FILE checkpoints & rollback
     ├── codePatcher.ts            # Atomic multi-file patch/create/delete with pre-write checks, auto-checkpoint & rollback
     ├── validationPipeline.ts     # L0 in-process checks, L1 adaptive CLI linters, L2 non-blocking test hint
     ├── workspaceExec.ts          # Bounded command runner (<=15s) with background job promotion & active-job cancel registry
     ├── codexRunner.ts            # CodexSdkRunner (@openai/codex-sdk), buildCodexSandboxedEnv(), reconcileOrphanJobs()
+    ├── watchdogService.ts        # Read-only GitHub CI Watchdog (HMAC-SHA256 webhook verification + readonly diagnostic dispatch)
     ├── githubService.ts          # Read-only PR/Issue/Actions inspection + protected-branch PR publish/review/comment
     ├── cloudflareService.ts      # Read-only CF inspection, 2-phase CF plan stage/execute/rollback, Wrangler Worker/Pages deploy
-    ├── downstreamMcpBridge.ts    # MCP-2 client federation (HTTP/stdio), tool policy classification, staged mutating execution
+    ├── downstreamMcpBridge.ts    # MCP-2 client federation (HTTP/stdio + Bearer auth), tool policy classification, staged mutating execution
     └── webhookNotifier.ts        # Scrubbed Slack/Discord/Feishu/generic webhook delivery (5s non-fatal timeout)
 docker/
-├── Dockerfile                    # Multi-stage Node >=22.23.4 image with UID 1001 (gateway) / UID 1002 (worker) isolation
-├── docker-compose.yml            # gateway (no host port), cloudflared (edge_net), optional ops-mcp (--profile ops on ops_net)
-├── Dockerfile.ops-mcp            # Pre-built offline mcp-proxy + @uarlouski/ssh-mcp-server image (non-root node, port 8090)
+├── Dockerfile                    # Multi-stage Node >=22.23.4 :lite & :full images with bwrap + UID 1001 (gateway) / UID 1002 (worker)
+├── docker-compose.yml            # gateway (no host port), cloudflared (edge_net), optional ops-mcp (--profile ops) & isolated-runner
+├── Dockerfile.ops-mcp            # Pre-built offline mcp-proxy + @uarlouski/ssh-mcp-server + Bearer auth proxy (non-root node, port 9000)
+├── ops-mcp-auth-proxy.mjs        # Timing-safe Bearer token reverse proxy wrapping internal ops-mcp
 ├── entrypoint.sh                 # umask 0027, enforces 0700 on DATA_DIR/ARTIFACTS_DIR/CODEX_HOME, checks WORKSPACES_DIR
 └── ops-mcp-config.example.json   # Reference MCP-2 server policy manifest (readonlyTools / mutatingTools / deniedTools)
+server.json                       # Official MCP Registry manifest (io.github.Kaiserunix/gemini-bastion-mcp)
 ```
 
 ---
@@ -75,11 +82,12 @@ Legacy HTTP+SSE routes (`/sse`, `/messages`) are prohibited.
 
 | Endpoint | Auth | Behavior |
 |---|---|---|
-| `GET /` | Public | Zero-leakage Gateway Portal (HTML with CSP script hash, copyable `/mcp` URL, `.well-known` links, static 10-tool badges, `/admin` link; `Accept: application/json` returns status JSON). Never queries workspaces, jobs, tokens, or secrets. |
+| `GET /` | Public | Zero-leakage Gateway Portal (editorial minimalist HTML with light/dark theme, CSP script hash, copyable `/mcp` URL, `.well-known` links, static 10-tool badges, `/admin` link; `Accept: application/json` returns status JSON). Never queries workspaces, jobs, tokens, or secrets. |
 | `GET /healthz` | Public | Liveness & SQLite `SELECT 1` readiness (`200` / `503`). |
 | `GET /.well-known/oauth-protected-resource` & `/mcp` | Public | RFC 9728 metadata (`resource: "${PUBLIC_DOMAIN}/mcp"`, `authorization_servers: [PUBLIC_DOMAIN]`, `bearer_methods_supported: ["header"]`, `scopes_supported`). |
 | `GET /.well-known/oauth-authorization-server` | Public | RFC 8414 metadata (`issuer`, `/oauth/authorize`, `/oauth/token`, `/oauth/revoke`, `/oauth/register`, `code_challenge_methods_supported: ["S256"]`, `token_endpoint_auth_methods_supported: ["none", "client_secret_post"]`). |
 | `POST /mcp` | OAuth Bearer | Stateless `WebStandardStreamableHTTPServerTransport` (`sessionIdGenerator: undefined`, JSON response). `GET`/`DELETE`/other methods return `405` (`Allow: POST`). Disallowed `Origin` headers return `403` (allows `PUBLIC_DOMAIN`, `gemini.google.com`, `aistudio.google.com`, `claude.ai`, `chatgpt.com`, and HTTPS/loopback `OAUTH_ALLOWED_REDIRECT_HOSTS`). |
+| `POST /webhooks/github` | HMAC-SHA256 | Optional Read-Only CI Watchdog (`WATCHDOG_ENABLED=true`): rate-limited, 64KB max body (`413`), verifies `X-Hub-Signature-256` (`401` on mismatch), enforces `WATCHDOG_ALLOWED_REPOS` (`403` otherwise). |
 
 - **Bearer Middleware (`src/auth/middleware.ts`)**: SHA-256 hashes the opaque token, verifies `oauth_tokens` (`token_type === 'access'`, non-revoked, unexpired, RFC 8707 `resource` matches `PUBLIC_DOMAIN` or `${PUBLIC_DOMAIN}/mcp`), and returns `401` with `WWW-Authenticate: Bearer resource_metadata="${PUBLIC_DOMAIN}/.well-known/oauth-protected-resource"` on failure.
 - **Tool Guardrails (`src/mcp/outputGuard.ts`)**: `withMcpGuardrails()` enforces OAuth scopes (`mcp:tools`/`mcp:write` vs `mcp:read`), scrubs outputs, enforces `{ content: [{ type: "text", text }] }` (plus `isError: true` on error), and offloads outputs `> INLINE_OUTPUT_MAX_BYTES` (default `60,000` bytes) to `${ARTIFACTS_DIR}/{artifactId}.log` with head/tail preview.
@@ -100,7 +108,7 @@ Legacy HTTP+SSE routes (`/sse`, `/messages`) are prohibited.
 
 ## 5. SQLite Data Model (`src/db/sqlite.ts`)
 
-Path: `${DATA_DIR}/gateway.db` (overridable via `DATABASE_PATH` or `:memory:`). Pragmas: `journal_mode = WAL`, `synchronous = NORMAL`, `foreign_keys = ON`, `busy_timeout = 5000`. Migrations tracked in `schema_migrations (version PK, name, applied_at)` (`v1: initial_schema`, `v2: upstream_oauth_states`):
+Path: `${DATA_DIR}/gateway.db` (overridable via `DATABASE_PATH` or `:memory:`). Pragmas: `journal_mode = WAL`, `synchronous = NORMAL`, `foreign_keys = ON`, `busy_timeout = 5000`. Migrations tracked in `schema_migrations (version PK, name, applied_at)` (`v1: initial_schema`, `v2: upstream_oauth_states`, `v3: workspace_memories`):
 
 1. `oauth_clients (client_id PK, client_secret_hash, client_name, redirect_uris_json, is_static, created_at)`
 2. `oauth_auth_requests (auth_req_id PK, client_id FK, redirect_uri, state, code_challenge, code_challenge_method, scope, resource, csrf_token, expires_at, used)`
@@ -108,18 +116,21 @@ Path: `${DATA_DIR}/gateway.db` (overridable via `DATABASE_PATH` or `:memory:`). 
 4. `oauth_tokens (token_hash PK, token_type, client_id FK, scope, resource, token_family_id, expires_at, grace_expires_at, revoked, created_at)`
 5. `oauth_upstream_states (state PK, provider, purpose, auth_req_id, code_verifier, binding_hash, expires_at, used, created_at)`
 6. `workspaces (slug PK, repo_url, default_branch, detected_stack_json, playbook_text, last_synced_at)`
-7. `checkpoints (checkpoint_id PK, workspace_slug FK, git_commit_sha, git_ref, reason, created_at)`
-8. `jobs (job_id PK, workspace_slug, runner_type, status, command_or_objective, codex_thread_id, checkpoint_id, events_json, token_usage_json, final_report_text, error_message, created_at, updated_at)`
-9. `mutation_plans (plan_id PK, target_service, summary_diff_text, payload_json, rollback_payload_json, status, expires_at, created_at, executed_at)`
-10. `audit_logs (id PK AUTOINCREMENT, actor, action, target, status, details_json, created_at)`
+7. `workspace_memories (memory_id PK, workspace_slug, category, key, content, pinned, created_at, updated_at, UNIQUE(workspace_slug, category, key))`
+8. `checkpoints (checkpoint_id PK, workspace_slug FK, git_commit_sha, git_ref, reason, created_at)`
+9. `jobs (job_id PK, workspace_slug, runner_type, status, command_or_objective, codex_thread_id, checkpoint_id, events_json, token_usage_json, final_report_text, error_message, created_at, updated_at)`
+10. `mutation_plans (plan_id PK, target_service, summary_diff_text, payload_json, rollback_payload_json, status, expires_at, created_at, executed_at)`
+11. `audit_logs (id PK AUTOINCREMENT, actor, action, target, status, details_json, created_at)`
 
 ---
 
-## 6. Security, Sandbox & Docker Isolation
+## 6. Security, Sandbox, `bwrap` & Docker Isolation
 
-- **Docker Dual-UID & Networks (`docker/`)**: `gateway` (UID `1001`, GID `1001`, member of `worker`) owns `/data`, `/data/artifacts`, `CODEX_HOME=/data/codex` (`0700`, enforced by `entrypoint.sh` + `umask 0027`), and `/app`; `IMMUTABLE_GATEWAY_PATH` excludes `/opt/mise/shims`; exposes only internal port `8787` (zero host ports) and clears `CLOUDFLARE_TUNNEL_TOKEN`/`TUNNEL_TOKEN`. `worker` (UID `1002`, GID `1002`) owns `/workspaces` (`2775`), `/home/worker`, and `/opt/mise` (`2775`) with zero access to `/data`. When `SANDBOX_UID`/`SANDBOX_GID` are set, `startSubprocess()` drops privileges via `/usr/bin/sudo -n -H -u #1002 -g #1002 -- /usr/bin/env ...` (prepending `/opt/mise/shims` only to worker `PATH`) and terminates process groups (`SIGTERM` -> `SIGKILL` with `sudo` fallback on `EPERM` / `taskkill /T /F` on Windows). `cloudflared` sits on `edge_net` with `TUNNEL_TOKEN` only; optional `ops-mcp` (`--profile ops`) runs offline on `internal: true` `ops_net` as non-root `node` with `no-new-privileges:true`.
-- **Env Allowlist, Scrubbing & Untrusted Boundary**: `buildSandboxedEnv()` (`src/utils/exec.ts`) enforces an allowlist + `FORBIDDEN_ENV_KEY_PATTERN` stripping all gateway secrets and sets `CI=true`, `DEBIAN_FRONTEND=noninteractive`, `GIT_TERMINAL_PROMPT=0`, `PAGER=cat`, `GIT_PAGER=cat`, `TERM=dumb`, `NO_COLOR=1`. `buildCodexSandboxedEnv()` (`src/core/codexRunner.ts`) adds only `CODEX_HOME`, `CODEX_API_KEY`/`OPENAI_API_KEY`, and optional `CODEX_BASE_URL`/`OPENAI_BASE_URL`. `SecretScrubber` (`src/utils/secretScrubber.ts`) redacts known env/config secrets (`length >= 8`) and token regexes (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `github_pat_`, `sk-...`, JWT `eyJ...`, `cfut_`, `v1.0-...`, `Bearer`/`Basic`, URL credentials) to `[REDACTED_SECRET]`. `wrapUntrustedData()` (`src/mcp/outputGuard.ts`) delimits external GitHub, Cloudflare tail, and MCP-2 outputs with `<<<BEGIN_UNTRUSTED_DATA ...>>>` / `<<<END_UNTRUSTED_DATA ...>>>` after neutralizing spoofed markers.
-- **Path Confinement, Locks & Checkpoints**: `loadConfig()` rejects `DATA_DIR`, `ARTIFACTS_DIR`, or `DATABASE_PATH` overlapping `WORKSPACES_DIR`. `resolveSafeWorkspacePath()` (`src/core/workspaceLock.ts`) verifies logical + `realpathSync` containment in `${WORKSPACES_DIR}/{slug}`, rejects broken symlinks, and blocks `.env*`, `.dev.vars*`, `*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`, `.git/config`, and `.git/hooks/*` (including Windows trailing dot/space normalization). `WorkspaceLockManager` provides fair FIFO per-workspace RW locks (`5000ms` default timeout; fast-fail `ACTIVE_JOB_LOCK` on active background write jobs). `createCheckpoint()` (`src/core/gitSnapshot.ts`) copies `.git/index` to a temp `GIT_INDEX_FILE` and runs `git add -A` -> `git write-tree` -> `git commit-tree` -> `git update-ref refs/mcp-checkpoints/<id>` (with `core.hooksPath=/dev/null`, `credential.helper=`); rollback creates a safety checkpoint then runs `git clean -fd` + `git read-tree --reset -u <sha>`.
+- **Docker Dual-UID & Networks (`docker/`)**: `gateway` (UID `1001`, GID `1001`, member of `worker`) owns `/data`, `/data/artifacts`, `CODEX_HOME=/data/codex` (`0700`, enforced by `entrypoint.sh` + `umask 0027`), and `/app`; `IMMUTABLE_GATEWAY_PATH` excludes `/opt/mise/shims`; exposes only internal port `8787` (zero host ports) and clears `CLOUDFLARE_TUNNEL_TOKEN`/`TUNNEL_TOKEN`. `worker` (UID `1002`, GID `1002`) owns `/workspaces` (`2775`), `/home/worker`, and `/opt/mise` (`2775`) with zero access to `/data`. When `SANDBOX_UID`/`SANDBOX_GID` are set, `startSubprocess()` drops privileges via `/usr/bin/sudo -n -H -u #1002 -g #1002 -- /usr/bin/env ...` (prepending `/opt/mise/shims` only to worker `PATH`) and terminates process groups (`SIGTERM` -> `SIGKILL` with `sudo` fallback on `EPERM` / `taskkill /T /F` on Windows). `cloudflared` sits on `edge_net` with `TUNNEL_TOKEN` only; optional `ops-mcp` (`--profile ops`) runs offline on `internal: true` `ops_net` behind `ops-mcp-auth-proxy.mjs` as non-root `node` with `no-new-privileges:true`.
+- **Per-Workspace `bwrap` Isolation (`v0.2.0`, `SANDBOX_BWRAP_ISOLATION` / `SANDBOX_STRICT_ISOLATION`)**: On Linux, after `sudo` drops privileges to `worker` UID `1002`, `startSubprocess()` probes and wraps commands in `/usr/bin/bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs <workspacesRoot> [--tmpfs <dataDir>] --bind <workspaceDir> <workspaceDir> --chdir <workspaceDir> [--unshare-net] -- <cmd>`. This prevents sibling workspace cross-reads and disables network egress by default unless `allowNetwork` is true; when `SANDBOX_STRICT_ISOLATION=true`, unavailable namespaces fail closed instead of falling back.
+- **Optional `isolated-runner` Sidecar (`AGENT_RUNNER_URL` + `AGENT_RUNNER_AUTH_TOKEN`)**: Offloads `agent_readonly` / `agent_write` / `codex_*` execution to an isolated container (`node dist/runner/sidecarServer.js`) running as UID `1002` with only `mcp_workspaces:/workspaces` mounted (no `/data` SQLite DB, no gateway credentials) on an internal `runner_net`.
+- **Env Allowlist, Scrubbing & Untrusted Boundary**: `buildSandboxedEnv()` (`src/utils/exec.ts`) enforces an allowlist + `FORBIDDEN_ENV_KEY_PATTERN` stripping all gateway secrets (`GH_TOKEN`, `CLOUDFLARE_*`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `AGENT_RUNNER_AUTH_TOKEN`, `OPS_MCP_AUTH_TOKEN`, `OAUTH_SIGNING_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, `DOWNSTREAM_MCPS_*`) and sets `CI=true`, `DEBIAN_FRONTEND=noninteractive`, `GIT_TERMINAL_PROMPT=0`, `PAGER=cat`, `GIT_PAGER=cat`, `TERM=dumb`, `NO_COLOR=1`. `buildCodexSandboxedEnv()` (`src/core/codexRunner.ts`) adds only `CODEX_HOME`, `CODEX_API_KEY`/`OPENAI_API_KEY`, and optional `CODEX_BASE_URL`/`OPENAI_BASE_URL`. `SecretScrubber` (`src/utils/secretScrubber.ts`) redacts known env/config secrets (`length >= 8`, including driver keys, sidecar/ops tokens, and downstream MCP `authToken`/`Authorization` headers) and token regexes (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `github_pat_`, `sk-...`, `AIza...`, JWT `eyJ...`, `cfut_`, `v1.0-...`, `Bearer`/`Basic`, URL credentials) to `[REDACTED_SECRET]`. `wrapUntrustedData()` (`src/mcp/outputGuard.ts`) delimits external GitHub, Cloudflare tail, and MCP-2 outputs with `<<<BEGIN_UNTRUSTED_DATA ...>>>` / `<<<END_UNTRUSTED_DATA ...>>>` after neutralizing spoofed markers.
+- **Path Confinement, Locks & Checkpoints**: `loadConfig()` canonicalizes and rejects `DATA_DIR`, `ARTIFACTS_DIR`, or `DATABASE_PATH` overlapping `WORKSPACES_DIR`. `resolveSafeWorkspacePath()` (`src/core/workspaceLock.ts`) verifies logical + `realpathSync` containment in `${WORKSPACES_DIR}/{slug}`, rejects broken symlinks, and blocks `.env*`, `.dev.vars*`, `*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`, `.git/config`, and `.git/hooks/*` (including Windows trailing dot/space normalization). `WorkspaceLockManager` provides fair FIFO per-workspace RW locks (`5000ms` default timeout; fast-fail `ACTIVE_JOB_LOCK` on active background write jobs). `createCheckpoint()` (`src/core/gitSnapshot.ts`) copies `.git/index` to a temp `GIT_INDEX_FILE` and runs `git add -A` -> `git write-tree` -> `git commit-tree` -> `git update-ref refs/mcp-checkpoints/<id>` (with `core.hooksPath=/dev/null`, `credential.helper=`); rollback creates a safety checkpoint then runs `git clean -fd` + `git read-tree --reset -u <sha>`.
 
 ---
 
@@ -127,13 +138,15 @@ Path: `${DATA_DIR}/gateway.db` (overridable via `DATABASE_PATH` or `:memory:`). 
 
 All 10 tools live in `src/mcp/tools/` and return `{ content: [{ type: "text", text }] }` (with `isError: true` on error).
 
+> **MCP `instructions` & 4 Built-In Prompts (`v0.3.0`, `src/mcp/server.ts`)**: `McpServer` ships concise server-level `instructions` on `initialize` (teaching the 10-tool SOP) plus 4 official MCP Prompts (`review_pr`, `fix_issue`, `resume_workspace_task`, `ops_health_check`) so Web Gemini, Claude.ai, and ChatGPT orient themselves automatically across sessions.
+
 | # | Tool | Annotations (`R/D/O`) | OAuth Scope | Selector & Supported Operations |
 |---|---|---|---|---|
-| 1 | `workspace_manage` | `false / false / false` | `read` (`list`, `init_cf_ops`, `list_checkpoints`) / `write` (`sync_github`, `rollback`) | `action`: `list`, `sync_github` (clone/ff-only; `fetched_only_dirty` if dirty; detects stack + `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md`), `init_cf_ops` (read-only `wrangler.toml`/`wrangler.jsonc` inspection), `list_checkpoints`, `rollback` |
+| 1 | `workspace_manage` | `false / false / false` | `read` (`list`, `init_cf_ops`, `list_checkpoints`, `memory_list`) / `write` (`sync_github`, `rollback`, `memory_upsert`, `memory_delete`) | `action`: `list` (with recalled memory counts), `sync_github` (clone/ff-only; `fetched_only_dirty` if dirty; detects stack + `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md` + injects recalled memories), `init_cf_ops` (read-only `wrangler.toml`/`wrangler.jsonc` inspection + recalled memories), `list_checkpoints`, `rollback`, `memory_upsert` / `memory_list` / `memory_delete` (`v0.3.0`: `task_state`, `decision`, `pitfall`, `preference`, `note`; secret-scanned, max 100/workspace, 8KB/entry) |
 | 2 | `code_explore` | `true / false / false` | `read` | `mode`: `pack` (`repomix --compress` / walker fallback), `search` (`rg` / fallback), `ast` (`ast-grep` / fallback), `read_lines` (5MB cap), `read_artifact` (`offset`, `limit` 1–50,000, default 20,000), `git_diff` (`staged`, `base_ref`); excludes sensitive files |
 | 3 | `code_patch` | `false / false / false` | `write` | `action`: `patch`, `create_or_overwrite`, `delete_file` (see contract below) |
-| 4 | `workspace_exec` | `false / false / false` | `write` | Sandboxed command in `/workspaces/{slug}` (`args`, `cwd`, `readonly` read-lock, `wait_ms` 500–15,000 default 12,000, `max_duration_sec` clamped to `CODEX_MAX_DURATION_SEC`); auto-promotes to background SQLite `shell_task` job on `wait_ms` expiry |
-| 5 | `dispatch_runner` | `false / false / false` | `write` | `mode`: `codex_readonly` (`read-only`, network off), `codex_write` (pre-run checkpoint + `workspace-write`, optional `allow_network`), `shell_task`. Supports `resume_thread_id`, `model`, `reasoning_effort`, config-clamped duration/token budgets, `CODEX_OUTPUT_SCHEMA` |
+| 4 | `workspace_exec` | `false / false / false` | `write` | Sandboxed command in `/workspaces/{slug}` (`args`, `cwd`, `readonly` read-lock, `allow_network`, `wait_ms` 500–15,000 default 12,000, `max_duration_sec` clamped to `CODEX_MAX_DURATION_SEC`); auto-promotes to background SQLite `shell_task` job on `wait_ms` expiry |
+| 5 | `dispatch_runner` | `false / false / false` | `write` | `mode`: `agent_readonly` / `codex_readonly` (`read-only`, network off), `agent_write` / `codex_write` (pre-run checkpoint + `workspace-write`, optional `allow_network`), `shell_task`. Pluggable `driver` (`codex` \| `claude_code` \| `gemini_cli` \| `opencode`, defaulting to `DEFAULT_AGENT_DRIVER`; local or `AGENT_RUNNER_URL` sidecar), `include_memory` (`v0.3.0`), `resume_thread_id`, `model`, `reasoning_effort`, config-clamped duration/token budgets, `CODEX_OUTPUT_SCHEMA` |
 | 6 | `job_status` | `false / false / false` | `read` (`write` if `cancel: true`) | Status, duration, `codex_thread_id`, `checkpoint_id`, `token_usage`, `git status -sb`, incremental events (`since_seq`, default last 20), report/error; `cancel: true` aborts via `AbortController` + process-group kill |
 | 7 | `github_inspect` | `true / false / true` | `read` | `mode`: `pr` (metadata, files, diff, checks, failed Actions logs), `issue` (body + comments), `workflow_failure` (recent failures or specific `run_id` logs) |
 | 8 | `infra_inspect` | `true / false / true` | `read` | `action`: Cloudflare (`zones`, `dns_records`, `workers`, `pages`, `kv_namespaces`, `d1_databases`, `waf_rules`, `worker_tail_logs` via `CLOUDFLARE_READONLY_API_TOKEN` fallback `CLOUDFLARE_API_TOKEN`) + MCP-2 (`downstream_list`, `downstream_call` for `readonlyTools` only) |
@@ -148,13 +161,24 @@ All 10 tools live in `src/mcp/tools/` and return `{ content: [{ type: "text", te
 
 ---
 
-## 8. Downstream MCP-2 Federation (`src/core/downstreamMcpBridge.ts`)
+## 8. Downstream MCP-2 Federation (`v0.2.0` Authenticated Sidecars)
 
-Loaded from `DOWNSTREAM_MCPS_JSON` and/or `DOWNSTREAM_MCPS_FILE` (array, `{ servers: [...] }`, or keyed map; `enabled: false` skipped). Supports `http` (`StreamableHTTPClientTransport`, e.g., `http://ops-mcp:8090/mcp` on `ops_net`) and `stdio` (`StdioClientTransport` using `buildSandboxedEnv()` + explicit server `env`). Tool policy precedence (default-deny): `deniedTools` > `readonlyTools` (`infra_inspect`) > `mutatingTools` (`stage_mutation_plan` -> `publish_changes`) > unlisted (blocked).
+Configured via `DOWNSTREAM_MCPS_JSON` and/or `DOWNSTREAM_MCPS_FILE` (`src/core/downstreamMcpBridge.ts`; accepts array, `{ servers: [...] }`, or keyed map; `enabled: false` skipped):
+- Supports both `http` (`StreamableHTTPClientTransport`, e.g., `http://ops-mcp:9000/mcp` on isolated `ops_net`) and `stdio` (`StdioClientTransport` using `buildSandboxedEnv()` + explicit server `env`).
+- Supports per-server Bearer token authentication (`authToken`, `authTokenEnv` e.g. `OPS_MCP_AUTH_TOKEN`, or `headers`) validated with `crypto.timingSafeEqual` by `docker/ops-mcp-auth-proxy.mjs`.
+- Tool policy precedence (default-deny): `deniedTools` > `readonlyTools` (`infra_inspect`) > `mutatingTools` (`stage_mutation_plan` -> `publish_changes`) > unlisted (blocked).
 
 ---
 
 ## 9. Admin PWA (`/admin`) & Webhook Notifications
 
-- **`/admin` (`src/admin/index.ts`, `src/admin/ui.ts`)**: Decoupled from `src/core/*` via injected `cancelJob` / `rollbackCheckpoint` callbacks. Password or IdP login issues HMAC-signed `gb_admin_session` cookie (`12h` TTL) paired with `x-csrf-token` on mutating `/admin/api/*` requests. Serves PWA assets (`/admin/manifest.webmanifest`, `/admin/sw.js`, `/admin/icon.svg`) and APIs (`GET /api/summary`, `GET /api/jobs`, `GET /api/jobs/stream` SSE, `POST /api/jobs/:id/cancel`, `GET /api/workspaces`, `POST /api/workspaces/:slug/rollback`, `GET /api/oauth`, `POST /api/oauth/tokens/:hash/revoke`, `DELETE /api/oauth/clients/:id`, `GET /api/plans`, `GET /api/audit`).
-- **Webhooks (`src/core/webhookNotifier.ts`)**: `NOTIFY_WEBHOOK_URL` sends scrubbed JSON POST alerts (`5s` non-fatal timeout) on job finish/failure/cancel/timeout and `publish_changes` actions, auto-formatting for Slack, Discord, Feishu/Lark, or generic JSON.
+- **`/admin` (`src/admin/index.ts`, `src/admin/ui.ts`)**: Decoupled from `src/core/*` via injected `cancelJob` / `rollbackCheckpoint` callbacks. Password or IdP login issues HMAC-signed `gb_admin_session` cookie (`12h` TTL) paired with `x-csrf-token` on mutating `/admin/api/*` requests. Serves PWA assets (`/admin/manifest.webmanifest`, `/admin/sw.js`, `/admin/icon.svg`) and APIs (`GET /api/summary`, `GET /api/jobs`, `GET /api/jobs/stream` SSE, `POST /api/jobs/:id/cancel`, `GET /api/workspaces`, `POST /api/workspaces/:slug/rollback`, `GET /api/oauth`, `POST /api/oauth/tokens/:hash/revoke`, `DELETE /api/oauth/clients/:id`, `GET /api/plans`, `GET /api/memories`, `DELETE /api/memories/:id`, `GET /api/audit`).
+- **Webhooks (`src/core/webhookNotifier.ts`)**: `NOTIFY_WEBHOOK_URL` sends scrubbed JSON POST alerts (`5s` non-fatal timeout) on job finish/failure/cancel/timeout, `publish_changes` actions, and Watchdog diagnosis completions, auto-formatting for Slack, Discord, Feishu/Lark, or generic JSON.
+
+---
+
+## 10. Read-Only GitHub CI Watchdog (`v0.3.0`)
+
+Configured via `WATCHDOG_ENABLED=true`, `GITHUB_WEBHOOK_SECRET`, `WATCHDOG_ALLOWED_REPOS`, and optional `WATCHDOG_AGENT_DRIVER` (`src/core/watchdogService.ts`):
+- **`POST /webhooks/github`**: Rate-limited and capped at 64KB (`413`), verifies `X-Hub-Signature-256` HMAC-SHA256 using `crypto.timingSafeEqual` (`401` on mismatch), enforces `WATCHDOG_ALLOWED_REPOS` (`403` otherwise), and fails closed in production if `GITHUB_WEBHOOK_SECRET` (<24 chars) or `WATCHDOG_ALLOWED_REPOS` is missing.
+- **Strictly Read-Only Diagnostics**: On failed `workflow_run` events (`action: "completed"`, `conclusion: "failure"`) for allowlisted repositories, dispatches a strictly read-only diagnostic job (`agent_readonly` / `codex_readonly`), persists a pinned `ci-failure-<runId>` `task_state` memory in `workspace_memories`, and notifies the operator via `NOTIFY_WEBHOOK_URL` without modifying code, calling `publish_changes`, or automating any consumer web UI.

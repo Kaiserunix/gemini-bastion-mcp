@@ -17,6 +17,7 @@ import {
   resolveSafeWorkspacePath,
   resolveWorkspaceRoot,
 } from '../../core/workspaceLock.js';
+import { scanForSecrets } from '../../core/validationPipeline.js';
 import { buildSandboxedEnv, runSubprocess } from '../../utils/exec.js';
 import { withMcpGuardrails } from '../outputGuard.js';
 import { buildGuardOptions, getToolActor, type McpToolDeps } from './context.js';
@@ -238,16 +239,32 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
   server.registerTool(
     'workspace_manage',
     {
-      title: 'Manage Workspaces & Checkpoints',
+      title: 'Manage Workspaces, Checkpoints & Persistent Memory',
       description:
-        'List registered workspaces, sync GitHub repos into /workspaces/{slug}, inspect Cloudflare wrangler ops context, list checkpoints, or rollback to a checkpoint.',
+        'List registered workspaces, sync GitHub repos into /workspaces/{slug}, inspect Cloudflare wrangler ops context, list/rollback checkpoints, and read/write/delete persistent workspace memories.',
       inputSchema: {
-        action: z.enum(['list', 'sync_github', 'init_cf_ops', 'list_checkpoints', 'rollback']),
+        action: z.enum([
+          'list',
+          'sync_github',
+          'init_cf_ops',
+          'list_checkpoints',
+          'rollback',
+          'memory_list',
+          'memory_upsert',
+          'memory_delete',
+        ]),
         slug: z.string().optional(),
         repo: z.string().optional(),
         branch: z.string().optional(),
         checkpoint_id: z.string().optional(),
         limit: z.number().int().min(1).max(100).optional(),
+        memory_category: z
+          .enum(['task_state', 'decision', 'pitfall', 'preference', 'note'])
+          .optional(),
+        memory_key: z.string().min(1).max(80).optional(),
+        memory_content: z.string().min(1).max(8192).optional(),
+        memory_pinned: z.boolean().optional(),
+        memory_id: z.string().min(1).max(128).optional(),
       },
       annotations: {
         readOnlyHint: false,
@@ -265,10 +282,25 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
             if (workspaces.length === 0) {
               return 'No workspaces registered yet. Use workspace_manage(action="sync_github", slug=..., repo=...) to clone one.';
             }
-            const lines = workspaces.map(
-              (w) =>
-                `- ${w.slug} | repo=${w.repo_url} | branch=${w.default_branch} | langs=${w.detected_stack.languages.join(',') || 'unknown'} | synced=${w.last_synced_at ? new Date(w.last_synced_at).toISOString() : 'never'}`,
-            );
+            const lines = workspaces.map((w) => {
+              const baseLine = `- ${w.slug} | repo=${w.repo_url} | branch=${w.default_branch} | langs=${w.detected_stack.languages.join(',') || 'unknown'} | synced=${w.last_synced_at ? new Date(w.last_synced_at).toISOString() : 'never'}`;
+              const memories = deps.repos.memories.listMemories({
+                workspaceSlug: w.slug,
+                limit: 10,
+              });
+              const highlight = memories
+                .filter((m) => m.pinned || m.category === 'task_state')
+                .slice(0, 3);
+              if (highlight.length === 0) {
+                return baseLine;
+              }
+              const snippets = highlight.map((m) => {
+                const compact = m.content.replace(/\s+/g, ' ').trim();
+                const preview = compact.length > 90 ? `${compact.slice(0, 87)}...` : compact;
+                return `  - [${m.category}/${m.key}${m.pinned ? ' pinned' : ''}] ${preview}`;
+              });
+              return `${baseLine}\n${snippets.join('\n')}`;
+            });
             return `# Registered Workspaces (${workspaces.length})\n${lines.join('\n')}`;
           }
 
@@ -294,12 +326,14 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
               status: 'success',
               details: { repo: res.workspace.repo_url, branch: res.currentBranch, action: res.action },
             });
+            const recall = deps.repos.memories.formatRecallContext(res.workspace.slug);
             return [
               `Workspace "${res.workspace.slug}" ${res.action} on branch "${res.currentBranch}" (${res.headSha.slice(0, 8)}).`,
               `Languages: ${res.workspace.detected_stack.languages.join(', ') || 'none'}`,
               `Frameworks: ${res.workspace.detected_stack.frameworks.join(', ') || 'none'}`,
               res.workspace.playbook_text ? `Playbook detected (${res.workspace.detected_stack.playbookSources?.join(', ')})` : 'No AGENTS.md/CLAUDE.md playbook found.',
               res.output ? `\n${res.output}` : '',
+              recall ? `\n${recall}` : '',
             ].join('\n');
           }
 
@@ -314,7 +348,12 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
                 workspaceRepo: deps.repos.workspaces,
               }),
             );
-            return JSON.stringify(ctx, null, 2);
+            const recall = deps.repos.memories.formatRecallContext(ctx.workspaceSlug);
+            return JSON.stringify(
+              recall ? { ...ctx, recalled_memories: recall } : ctx,
+              null,
+              2,
+            );
           }
 
           case 'list_checkpoints': {
@@ -359,11 +398,123 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
               .filter(Boolean)
               .join('\n');
           }
+
+          case 'memory_list': {
+            const safeSlug = args.slug
+              ? resolveWorkspaceRoot(deps.config.workspacesDir, args.slug).slug
+              : undefined;
+            const records = deps.repos.memories.listMemories({
+              ...(safeSlug ? { workspaceSlug: safeSlug } : {}),
+              ...(args.memory_category ? { category: args.memory_category } : {}),
+              ...(args.memory_pinned !== undefined ? { pinnedOnly: args.memory_pinned } : {}),
+              limit: args.limit ?? 50,
+            });
+            if (records.length === 0) {
+              return safeSlug
+                ? `No persistent memories found for workspace "${safeSlug}".`
+                : 'No persistent memories found.';
+            }
+            const lines = records.map(
+              (m) =>
+                `- [${m.workspace_slug}] (${m.category}) ${m.key}${m.pinned ? ' [pinned]' : ''} | id=${m.memory_id} | updated=${new Date(m.updated_at).toISOString()}\n  ${m.content}`,
+            );
+            return `# Workspace Memories (${records.length})\n${lines.join('\n')}`;
+          }
+
+          case 'memory_upsert': {
+            if (!args.slug || !args.memory_key || !args.memory_content) {
+              throw new Error(
+                'memory_upsert requires "slug", "memory_key", and "memory_content".',
+              );
+            }
+            const { slug } = resolveWorkspaceRoot(deps.config.workspacesDir, args.slug);
+            const category = args.memory_category ?? 'note';
+            const secretDiagnostics = scanForSecrets(
+              `memory/${slug}/${category}/${args.memory_key}`,
+              args.memory_content,
+              deps.scrubber,
+            );
+            if (secretDiagnostics.length > 0) {
+              const rules = Array.from(new Set(secretDiagnostics.map((d) => d.rule))).join(', ');
+              throw new Error(
+                `Refusing to persist workspace memory: secret pattern detected (${rules}). Never store tokens, API keys, or private keys in memory.`,
+              );
+            }
+
+            const scrubbedContent = deps.scrubber.scrub(args.memory_content);
+            const record = deps.repos.memories.upsertMemory({
+              workspaceSlug: slug,
+              category,
+              key: args.memory_key,
+              content: scrubbedContent,
+              pinned: args.memory_pinned ?? false,
+            });
+            deps.repos.audit.record({
+              actor,
+              action: 'workspace.memory_upsert',
+              target: `${slug}:${category}:${record.key}`,
+              status: 'success',
+              details: { memory_id: record.memory_id, pinned: record.pinned },
+            });
+            return `Saved persistent memory "${record.key}" (${record.category}, pinned=${record.pinned}) for workspace "${record.workspace_slug}" [memory_id=${record.memory_id}].`;
+          }
+
+          case 'memory_delete': {
+            if (args.memory_id) {
+              const existing = deps.repos.memories.getMemoryById(args.memory_id);
+              if (!existing) {
+                throw new Error(`Memory "${args.memory_id}" not found.`);
+              }
+              if (args.slug) {
+                const { slug } = resolveWorkspaceRoot(deps.config.workspacesDir, args.slug);
+                if (existing.workspace_slug !== slug) {
+                  throw new Error(
+                    `Memory "${args.memory_id}" belongs to workspace "${existing.workspace_slug}", not "${slug}".`,
+                  );
+                }
+              }
+              const deleted = deps.repos.memories.deleteMemoryById(args.memory_id);
+              if (!deleted) {
+                throw new Error(`Failed to delete memory "${args.memory_id}".`);
+              }
+              deps.repos.audit.record({
+                actor,
+                action: 'workspace.memory_delete',
+                target: `${existing.workspace_slug}:${existing.category}:${existing.key}`,
+                status: 'success',
+                details: { memory_id: existing.memory_id },
+              });
+              return `Deleted memory "${existing.key}" (${existing.category}) from workspace "${existing.workspace_slug}" [memory_id=${existing.memory_id}].`;
+            }
+
+            if (!args.slug || !args.memory_key) {
+              throw new Error(
+                'memory_delete requires either "memory_id" or ("slug", "memory_key", and optional "memory_category").',
+              );
+            }
+            const { slug } = resolveWorkspaceRoot(deps.config.workspacesDir, args.slug);
+            const category = args.memory_category ?? 'note';
+            const deleted = deps.repos.memories.deleteMemory(slug, category, args.memory_key);
+            if (!deleted) {
+              throw new Error(
+                `Memory (${category}/${args.memory_key}) not found for workspace "${slug}".`,
+              );
+            }
+            deps.repos.audit.record({
+              actor,
+              action: 'workspace.memory_delete',
+              target: `${slug}:${category}:${args.memory_key}`,
+              status: 'success',
+            });
+            return `Deleted memory "${args.memory_key}" (${category}) from workspace "${slug}".`;
+          }
         }
       },
       (args) => ({
         ...buildGuardOptions(deps, `workspace-${args.action}`),
-        requiredScope: ['list', 'init_cf_ops', 'list_checkpoints'].includes(args.action)
+        requiredScope: ['list', 'init_cf_ops', 'list_checkpoints', 'memory_list'].includes(
+          args.action,
+        )
           ? 'read'
           : 'write',
       }),

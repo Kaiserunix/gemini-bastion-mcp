@@ -1,18 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="GeminiBastionMCP Shield Icon">
-  <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#131a2e" />
-      <stop offset="100%" stop-color="#0b1020" />
-    </linearGradient>
-    <linearGradient id="shieldStroke" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#60a5fa" />
-      <stop offset="100%" stop-color="#2563eb" />
-    </linearGradient>
-  </defs>
-  <rect width="128" height="128" rx="28" fill="#0b1020" />
-  <rect x="8" y="8" width="112" height="112" rx="22" fill="url(#bgGrad)" stroke="#233054" stroke-width="3" />
-  <path d="M64 20 L100 34 V64 C100 88 84 104 64 112 C44 104 28 88 28 64 V34 Z" fill="#0f172a" stroke="url(#shieldStroke)" stroke-width="5" stroke-linejoin="round" />
-  <path d="M46 52 L64 43 L82 52 V74 L64 85 L46 74 Z" fill="none" stroke="#60a5fa" stroke-width="4.5" stroke-linejoin="round" />
-  <circle cx="64" cy="64" r="9" fill="#3b82f6" />
-  <circle cx="64" cy="64" r="4" fill="#e6ecff" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="GeminiBastionMCP Emblem">
+  <rect width="128" height="128" rx="26" fill="#111113" />
+  <rect x="6" y="6" width="116" height="116" rx="21" fill="none" stroke="#27272A" stroke-width="2" />
+  <path d="M64 22 L98 36 V64 C98 86 83 102 64 109 C45 102 30 86 30 64 V36 Z" fill="none" stroke="#FAFAFA" stroke-width="4.5" stroke-linejoin="round" />
+  <path d="M47 52 L64 43 L81 52 V73 L64 83 L47 73 Z" fill="none" stroke="#A1A1AA" stroke-width="3.5" stroke-linejoin="round" />
+  <circle cx="64" cy="63" r="5.5" fill="#FAFAFA" />
 </svg>

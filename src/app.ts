@@ -3,11 +3,13 @@ import { Hono } from 'hono';
 import { createAdminApp } from './admin/index.js';
 import { createAuthApp, createBearerMiddleware, ensureStaticClient } from './auth/index.js';
 import { loadConfig } from './config.js';
+import { createAgentRunnerRegistry } from './core/agentDrivers/index.js';
 import { CloudflareService } from './core/cloudflareService.js';
 import { CodexSdkRunner, reconcileOrphanJobs } from './core/codexRunner.js';
 import { DownstreamMcpBridge } from './core/downstreamMcpBridge.js';
 import { GitHubService } from './core/githubService.js';
 import { rollbackToCheckpoint } from './core/gitSnapshot.js';
+import { createGitHubWebhookApp } from './core/watchdogService.js';
 import { sendWebhookNotification } from './core/webhookNotifier.js';
 import { cancelActiveJob, listActiveJobIds } from './core/workspaceExec.js';
 import { WorkspaceLockManager, workspaceLockManager } from './core/workspaceLock.js';
@@ -20,7 +22,7 @@ import {
 } from './mcp/landingPage.js';
 import { createMcpHttpHandler } from './mcp/server.js';
 import type { McpToolDeps } from './mcp/tools/index.js';
-import type { GatewayConfig, ScrubberLike } from './types.js';
+import type { AgentRunner, GatewayConfig, ScrubberLike } from './types.js';
 import { createSecretScrubber } from './utils/secretScrubber.js';
 
 export interface CreateGatewayAppOptions {
@@ -33,6 +35,7 @@ export interface CreateGatewayAppOptions {
   cloudflareService?: CloudflareService;
   downstreamBridge?: DownstreamMcpBridge;
   codexRunner?: CodexSdkRunner;
+  agentRunner?: AgentRunner;
   rateLimitMaxAttempts?: number;
   rateLimitWindowMs?: number;
 }
@@ -47,7 +50,8 @@ export interface GatewayAppInstance {
   githubService: GitHubService;
   cloudflareService: CloudflareService;
   downstreamBridge: DownstreamMcpBridge;
-  codexRunner: CodexSdkRunner;
+  codexRunner?: CodexSdkRunner;
+  agentRunner: AgentRunner;
   shutdown: () => Promise<void>;
 }
 
@@ -100,6 +104,17 @@ export function createGatewayApp(
       scrubber,
     });
 
+  const agentRunner =
+    options.agentRunner ??
+    createAgentRunnerRegistry({
+      config,
+      jobRepo: repos.jobs,
+      workspaceRepo: repos.workspaces,
+      lockManager,
+      scrubber,
+      codexRunner,
+    });
+
   const notifyWebhook = async (event: string, payload: Record<string, unknown>) => {
     await sendWebhookNotification(config, event, payload, { scrubber });
   };
@@ -113,7 +128,7 @@ export function createGatewayApp(
     githubService,
     cloudflareService,
     downstreamBridge,
-    codexRunner,
+    agentRunner,
     notifyWebhook,
   };
 
@@ -223,6 +238,19 @@ export function createGatewayApp(
   app.use('/mcp', bearerMiddleware);
   app.all('/mcp', createMcpHttpHandler(mcpDeps));
 
+  app.route(
+    '/webhooks/github',
+    createGitHubWebhookApp({
+      config,
+      repos,
+      scrubber,
+      agentRunner,
+      notifyWebhook,
+      rateLimitMaxAttempts: options.rateLimitMaxAttempts,
+      rateLimitWindowMs: options.rateLimitWindowMs,
+    }),
+  );
+
   app.onError((err, c) => {
     const safeMsg = scrubber.scrub(err instanceof Error ? err.message : String(err));
     return c.json(
@@ -274,6 +302,7 @@ export function createGatewayApp(
     cloudflareService,
     downstreamBridge,
     codexRunner,
+    agentRunner,
     shutdown,
   };
 }
