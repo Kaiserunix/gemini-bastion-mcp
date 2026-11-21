@@ -1,80 +1,61 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-label="GeminiBastionMCP v0.3.0 Social Preview Card">
-  <defs>
-    <linearGradient id="socBg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0b1020" />
-      <stop offset="50%" stop-color="#111a33" />
-      <stop offset="100%" stop-color="#090e1c" />
-    </linearGradient>
-    <radialGradient id="socGlow1" cx="80%" cy="25%" r="50%">
-      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.28" />
-      <stop offset="100%" stop-color="#0b1020" stop-opacity="0" />
-    </radialGradient>
-    <radialGradient id="socGlow2" cx="20%" cy="85%" r="45%">
-      <stop offset="0%" stop-color="#10b981" stop-opacity="0.18" />
-      <stop offset="100%" stop-color="#0b1020" stop-opacity="0" />
-    </radialGradient>
-    <linearGradient id="socShield" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#60a5fa" />
-      <stop offset="100%" stop-color="#2563eb" />
-    </linearGradient>
-  </defs>
+  <!-- Swiss Editorial Warm Alabaster Canvas & Grid -->
+  <rect width="1280" height="640" fill="#FBFBFB" />
+  <g stroke="#EFEFEF" stroke-width="1">
+    <line x1="0" y1="88" x2="1280" y2="88" />
+    <line x1="0" y1="552" x2="1280" y2="552" />
+    <line x1="88" y1="0" x2="88" y2="640" />
+    <line x1="1192" y1="0" x2="1192" y2="640" />
+  </g>
+  <rect x="28" y="28" width="1224" height="584" rx="20" fill="none" stroke="#E4E4E7" stroke-width="2" />
 
-  <rect width="1280" height="640" fill="url(#socBg)" />
-  <rect width="1280" height="640" fill="url(#socGlow1)" />
-  <rect width="1280" height="640" fill="url(#socGlow2)" />
-  <rect x="24" y="24" width="1232" height="592" rx="28" fill="none" stroke="#233054" stroke-width="3" />
-
-  <!-- Content Area -->
-  <g transform="translate(72, 74)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif">
-    <!-- Top Header Row -->
+  <g transform="translate(88, 86)" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', 'Segoe UI', system-ui, sans-serif">
+    <!-- Top Identity Row -->
     <g transform="translate(0, 0)">
-      <rect x="0" y="0" width="76" height="76" rx="18" fill="#131a2e" stroke="#3b82f6" stroke-width="2.5" />
-      <path d="M38 12 L60 21 V39 C60 54 50 64 38 69 C26 64 16 54 16 39 V21 Z" fill="#0b1224" stroke="url(#socShield)" stroke-width="3.5" />
-      <circle cx="38" cy="39" r="6" fill="#3b82f6" />
+      <rect x="0" y="0" width="60" height="60" rx="14" fill="#111113" />
+      <path d="M30 12 L46 19 V32 C46 43 39 50 30 54 C21 50 14 43 14 32 V19 Z" fill="none" stroke="#FAFAFA" stroke-width="2.8" stroke-linejoin="round" />
+      <circle cx="30" cy="31" r="4" fill="#FAFAFA" />
 
-      <rect x="94" y="8" width="286" height="28" rx="14" fill="#131f3a" stroke="#3b82f6" stroke-width="1.5" />
-      <text x="237" y="27" text-anchor="middle" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700">MCP 2025-11-25 · OAUTH 2.1 DCR</text>
-
-      <rect x="392" y="8" width="268" height="28" rx="14" fill="#0d2824" stroke="#10b981" stroke-width="1.5" />
-      <text x="526" y="27" text-anchor="middle" fill="#86efac" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700">v0.3.0 · OFFICIAL MCP REGISTRY</text>
-
-      <rect x="672" y="8" width="268" height="28" rx="14" fill="#131a2e" stroke="#f59e0b" stroke-width="1.5" />
-      <text x="806" y="27" text-anchor="middle" fill="#fde68a" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700">Memory · Prompts · Watchdog</text>
-
-      <text x="96" y="64" fill="#60a5fa" font-family="ui-monospace, monospace" font-size="17" font-weight="600">io.github.Kaiserunix/gemini-bastion-mcp · GHCR :lite &amp; :full</text>
+      <text x="80" y="26" fill="#52525B" font-family="'SF Mono', ui-monospace, Menlo, monospace" font-size="14" font-weight="600">io.github.Kaiserunix/gemini-bastion-mcp · v0.3.0 · MIT</text>
+      <text x="80" y="50" fill="#71717A" font-family="'SF Mono', ui-monospace, Menlo, monospace" font-size="13.5">MCP 2025-11-25 STREAMABLE HTTP · OAUTH 2.1 + PKCE + DCR · GHCR :LITE &amp; :FULL</text>
     </g>
 
-    <!-- Headline and Multi-Client Positioning -->
-    <text x="0" y="150" fill="#f8fafc" font-size="62" font-weight="800" letter-spacing="-1.5">GeminiBastionMCP</text>
-    <text x="0" y="198" fill="#93c5fd" font-size="24.5" font-weight="700">Built for Web Gemini (gemini.google.com), Claude.ai &amp; ChatGPT — Not Gemini-Only</text>
-    <text x="0" y="236" fill="#93a3c8" font-size="18.5">Cross-session SQLite workspace memory · Built-in MCP instructions &amp; 4 workflow Prompts ·</text>
-    <text x="0" y="264" fill="#93a3c8" font-size="18.5">Read-only GitHub CI Watchdog · 4 Agent Drivers · bwrap FS/network jail · 10 tools, 1 approval gate.</text>
+    <!-- Main Editorial Headline -->
+    <text x="0" y="144" fill="#111113" font-size="64" font-weight="700" letter-spacing="-2.2">GeminiBastionMCP</text>
+    <text x="0" y="194" fill="#27272A" font-size="25" font-weight="500" letter-spacing="-0.4">Self-hosted OAuth 2.1 MCP bastion for Web Gemini, Claude.ai, and ChatGPT.</text>
+    <text x="0" y="232" fill="#71717A" font-size="18.5">10 tools, 1 approval gate · Cross-session SQLite workspace memory · 4 pluggable agent drivers · bwrap jail.</text>
 
-    <!-- 3 Feature Pillar Cards -->
-    <g transform="translate(0, 304)">
-      <rect x="0" y="0" width="360" height="172" rx="16" fill="#131a2e" stroke="#10b981" stroke-width="2" />
-      <text x="22" y="34" fill="#86efac" font-family="ui-monospace, monospace" font-size="13.5" font-weight="700">🧠 PERSISTENT AGENT &amp; PROMPTS</text>
-      <text x="22" y="64" fill="#e6ecff" font-size="16" font-weight="700">Cross-Session Memory + SOP</text>
-      <text x="22" y="90" fill="#93a3c8" font-size="13.5">SQLite workspace_memories auto-recalled on</text>
-      <text x="22" y="110" fill="#93a3c8" font-size="13.5">list/sync + MCP InitializeResult instructions</text>
-      <text x="22" y="130" fill="#93a3c8" font-size="13.5">&amp; 4 prompts + ready-to-paste Gemini Gem</text>
-      <text x="22" y="150" fill="#93a3c8" font-size="13.5">System Prompt.</text>
+    <!-- 3 Minimal Hairline Gallery Cards -->
+    <g transform="translate(0, 278)">
+      <!-- Card 1 -->
+      <rect x="0" y="0" width="352" height="178" rx="12" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.5" />
+      <circle cx="26" cy="32" r="4.5" fill="#047857" />
+      <text x="40" y="36" fill="#047857" font-family="'SF Mono', ui-monospace, monospace" font-size="12" font-weight="600" letter-spacing="0.5">10 TOOLS · 1 APPROVAL GATE</text>
+      <text x="22" y="68" fill="#111113" font-size="18" font-weight="600">Zero-Popup Web AI Flow</text>
+      <text x="22" y="96" fill="#52525B" font-size="14">Tools 01–08 run inside the sandbox.</text>
+      <text x="22" y="118" fill="#52525B" font-size="14">Tool 09 stages 15m TTL plan snapshots.</text>
+      <text x="22" y="140" fill="#52525B" font-size="14">Tool 10 (publish_changes) is the single</text>
+      <text x="22" y="160" fill="#52525B" font-size="14">audited external write exit.</text>
 
-      <rect x="382" y="0" width="360" height="172" rx="16" fill="#131a2e" stroke="#3b82f6" stroke-width="2" />
-      <text x="404" y="34" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="13.5" font-weight="700">🤖 WATCHDOG &amp; 4 AGENT DRIVERS</text>
-      <text x="404" y="64" fill="#e6ecff" font-size="16" font-weight="700">CI Triage + Codex/Claude/Gemini</text>
-      <text x="404" y="90" fill="#93a3c8" font-size="13.5">HMAC-verified GitHub CI Watchdog runs</text>
-      <text x="404" y="110" fill="#93a3c8" font-size="13.5">read-only root-cause triage &amp; saves memory</text>
-      <text x="404" y="130" fill="#93a3c8" font-size="13.5">+ 4 pluggable drivers (codex, claude_code,</text>
-      <text x="404" y="150" fill="#93a3c8" font-size="13.5">gemini_cli, opencode).</text>
+      <!-- Card 2 -->
+      <rect x="376" y="0" width="352" height="178" rx="12" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.5" />
+      <circle cx="402" cy="32" r="4.5" fill="#111113" />
+      <text x="416" y="36" fill="#111113" font-family="'SF Mono', ui-monospace, monospace" font-size="12" font-weight="600" letter-spacing="0.5">PERSISTENT AGENT &amp; DRIVERS</text>
+      <text x="398" y="68" fill="#111113" font-size="18" font-weight="600">Memory · Prompts · 4 CLIs</text>
+      <text x="398" y="96" fill="#52525B" font-size="14">Cross-session SQLite workspace_memories,</text>
+      <text x="398" y="118" fill="#52525B" font-size="14">4 MCP workflow Prompts, read-only CI</text>
+      <text x="398" y="140" fill="#52525B" font-size="14">Watchdog, and Codex, Claude Code,</text>
+      <text x="398" y="160" fill="#52525B" font-size="14">Gemini CLI &amp; OpenCode drivers.</text>
 
-      <rect x="764" y="0" width="372" height="172" rx="16" fill="#1d1322" stroke="#f59e0b" stroke-width="2" />
-      <text x="786" y="34" fill="#fde68a" font-family="ui-monospace, monospace" font-size="13.5" font-weight="700">🛡️ BWRAP JAIL &amp; 1 WRITE GATE</text>
-      <text x="786" y="64" fill="#e6ecff" font-size="16" font-weight="700">10 Tools · 1 Approval Gate</text>
-      <text x="786" y="90" fill="#93a3c8" font-size="13.5">Per-workspace bubblewrap mount &amp; network</text>
-      <text x="786" y="110" fill="#93a3c8" font-size="13.5">isolation (--unshare-net), UID 1001/1002</text>
-      <text x="786" y="130" fill="#93a3c8" font-size="13.5">split, two-phase mutations, and single</text>
-      <text x="786" y="150" fill="#93a3c8" font-size="13.5">publish_changes external write exit.</text>
+      <!-- Card 3 -->
+      <rect x="752" y="0" width="352" height="178" rx="12" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.5" />
+      <circle cx="778" cy="32" r="4.5" fill="#B45309" />
+      <text x="792" y="36" fill="#B45309" font-family="'SF Mono', ui-monospace, monospace" font-size="12" font-weight="600" letter-spacing="0.5">DEFENSE-IN-DEPTH SANDBOX</text>
+      <text x="774" y="68" fill="#111113" font-size="18" font-weight="600">bwrap Jail &amp; Operator SSO</text>
+      <text x="774" y="96" fill="#52525B" font-size="14">Per-workspace bubblewrap FS &amp; network</text>
+      <text x="774" y="118" fill="#52525B" font-size="14">namespace jail (--unshare-net), UID</text>
+      <text x="774" y="140" fill="#52525B" font-size="14">1001/1002 split, GIT_INDEX_FILE undo,</text>
+      <text x="774" y="160" fill="#52525B" font-size="14">and fail-closed Google/GitHub SSO.</text>
     </g>
   </g>
 </svg>

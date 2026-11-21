@@ -62,15 +62,39 @@ function renderIdpErrorHtml(title: string, message: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)} — GeminiBastionMCP</title>
   <style>
-    body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#0b1020; color:#e5e7eb; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:16px; }
-    .card { max-width:440px; width:100%; background:#131a2e; border:1px solid #26314f; border-radius:14px; padding:24px; box-shadow:0 12px 32px rgba(0,0,0,0.45); }
-    h1 { margin:0 0 8px; font-size:1.2rem; color:#f87171; }
-    p { margin:0 0 16px; font-size:0.95rem; line-height:1.5; color:#cbd5e1; }
-    a { color:#60a5fa; text-decoration:none; font-size:0.9rem; font-weight:600; }
+    :root {
+      --bg: #FBFBFB;
+      --surface: #FFFFFF;
+      --border: #E4E4E7;
+      --ink: #111113;
+      --ink-2: #52525B;
+      --crimson: #B91C1C;
+      --shadow: 0 1px 2px rgba(17,17,19,0.04), 0 8px 24px rgba(17,17,19,0.03);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #09090B;
+        --surface: #111113;
+        --border: #27272A;
+        --ink: #FAFAFA;
+        --ink-2: #A1A1AA;
+        --crimson: #F87171;
+        --shadow: 0 1px 2px rgba(0,0,0,0.4);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--ink); display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; -webkit-font-smoothing:antialiased; }
+    .card { max-width:400px; width:100%; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:32px; box-shadow:var(--shadow); }
+    .mark { display:inline-flex; align-items:center; gap:8px; font-size:0.8125rem; font-weight:600; color:var(--ink); margin-bottom:20px; }
+    h1 { margin:0 0 8px; font-size:1.125rem; font-weight:600; letter-spacing:-0.02em; color:var(--crimson); }
+    p { margin:0 0 20px; font-size:0.875rem; line-height:1.55; color:var(--ink-2); }
+    a { display:inline-block; color:var(--ink); text-decoration:none; font-size:0.8125rem; font-weight:500; border:1px solid var(--border); padding:8px 12px; border-radius:8px; }
+    a:hover { text-decoration:underline; }
   </style>
 </head>
 <body>
   <main class="card">
+    <div class="mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.5L20 6.5V13.2C20 17.6 16.5 20.8 12 22C7.5 20.8 4 17.6 4 13.2V6.5L12 2.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 12.2L11.1 14.3L15.3 9.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>GeminiBastionMCP</span></div>
     <h1>${escapeHtml(title)}</h1>
     <p>${escapeHtml(message)}</p>
     <a href="/admin/login">Return to Sign In</a>

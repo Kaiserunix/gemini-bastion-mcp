@@ -16,17 +16,84 @@ export interface AdminKpiSummary {
   memoriesCount: number;
 }
 
+const EDITORIAL_THEME_CSS = `
+    :root {
+      --bg: #FBFBFB;
+      --surface: #FFFFFF;
+      --subtle: #F4F4F5;
+      --border: #E4E4E7;
+      --border-strong: #D4D4D8;
+      --ink: #111113;
+      --ink-2: #52525B;
+      --muted: #71717A;
+      --cta-bg: #111113;
+      --cta-fg: #FFFFFF;
+      --cta-hover: #27272A;
+      --sage: #047857;
+      --sage-bg: #ECFDF5;
+      --sage-bd: #A7F3D0;
+      --ochre: #B45309;
+      --ochre-bg: #FFFBEB;
+      --ochre-bd: #FDE68A;
+      --crimson: #B91C1C;
+      --crimson-bg: #FEF2F2;
+      --crimson-bd: #FECACA;
+      --shadow: 0 1px 2px rgba(17,17,19,0.04), 0 8px 24px rgba(17,17,19,0.03);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #09090B;
+        --surface: #111113;
+        --subtle: #18181B;
+        --border: #27272A;
+        --border-strong: #3F3F46;
+        --ink: #FAFAFA;
+        --ink-2: #A1A1AA;
+        --muted: #71717A;
+        --cta-bg: #FAFAFA;
+        --cta-fg: #09090B;
+        --cta-hover: #E4E4E7;
+        --sage: #34D399;
+        --sage-bg: rgba(4,120,87,0.14);
+        --sage-bd: rgba(52,211,153,0.28);
+        --ochre: #FBBF24;
+        --ochre-bg: rgba(180,83,9,0.14);
+        --ochre-bd: rgba(251,191,36,0.28);
+        --crimson: #F87171;
+        --crimson-bg: rgba(185,28,28,0.16);
+        --crimson-bd: rgba(248,113,113,0.3);
+        --shadow: 0 1px 2px rgba(0,0,0,0.4);
+      }
+    }
+`;
+
+const BASTION_MARK_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <path d="M12 2.5L20 6.5V13.2C20 17.6 16.5 20.8 12 22C7.5 20.8 4 17.6 4 13.2V6.5L12 2.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+  <path d="M9 12.2L11.1 14.3L15.3 9.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+const GOOGLE_MONO_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <path d="M21.35 12.23c0-.72-.06-1.41-.18-2.08H12v3.94h5.26a4.5 4.5 0 0 1-1.95 2.95v2.45h3.16c1.85-1.7 2.88-4.21 2.88-7.26Z" fill="currentColor" opacity="0.85"/>
+  <path d="M12 21.75c2.63 0 4.84-.87 6.45-2.36l-3.16-2.45c-.87.58-1.99.93-3.29.93-2.53 0-4.68-1.71-5.45-4.01H3.29v2.52A9.75 9.75 0 0 0 12 21.75Z" fill="currentColor" opacity="0.7"/>
+  <path d="M6.55 13.86A5.86 5.86 0 0 1 6.24 12c0-.64.11-1.27.31-1.86V7.62H3.29A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.06 1.04 4.38l3.26-2.52Z" fill="currentColor" opacity="0.55"/>
+  <path d="M12 6.13c1.43 0 2.71.49 3.72 1.46l2.79-2.79C16.83 3.24 14.62 2.25 12 2.25a9.75 9.75 0 0 0-8.71 5.37l3.26 2.52c.77-2.3 2.92-4.01 5.45-4.01Z" fill="currentColor"/>
+</svg>`;
+
+const GITHUB_MONO_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.475 2 2 6.475 2 12a9.994 9.994 0 0 0 6.838 9.488c.5.087.687-.213.687-.475 0-.238-.012-1.025-.012-1.863-2.513.463-3.163-.612-3.363-1.175-.112-.287-.6-1.175-1.025-1.412-.35-.188-.85-.65-.012-.663.787-.012 1.35.725 1.537 1.025.9 1.513 2.338 1.088 2.913.825.087-.65.35-1.087.637-1.337-2.225-.25-4.55-1.113-4.55-4.938 0-1.087.388-1.987 1.025-2.687-.1-.25-.45-1.275.1-2.65 0 0 .838-.263 2.75 1.025a9.28 9.28 0 0 1 2.5-.338c.85 0 1.7.113 2.5.338 1.912-1.3 2.75-1.025 2.75-1.025.55 1.375.2 2.4.1 2.65.637.7 1.025 1.587 1.025 2.687 0 3.838-2.337 4.688-4.562 4.938.362.312.675.912.675 1.85 0 1.337-.013 2.412-.013 2.75 0 .262.188.574.688.474A10.016 10.016 0 0 0 22 12c0-5.525-4.475-10-10-10Z"/>
+</svg>`;
+
 export function renderAdminManifest(): Record<string, unknown> {
   return {
     name: 'GeminiBastionMCP',
     short_name: 'GeminiBastion',
     description:
-      'Mobile-first operator cockpit for GeminiBastionMCP jobs, workspaces, OAuth sessions, staged plans, and audit logs.',
+      'Editorial operator cockpit for GeminiBastionMCP jobs, workspaces, OAuth sessions, staged plans, and audit logs.',
     start_url: '/admin',
     scope: '/admin',
     display: 'standalone',
-    background_color: '#0b1020',
-    theme_color: '#131a2e',
+    background_color: '#FBFBFB',
+    theme_color: '#FBFBFB',
     icons: [
       {
         src: '/admin/icon.svg',
@@ -40,15 +107,14 @@ export function renderAdminManifest(): Record<string, unknown> {
 
 export function renderAdminIconSvg(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="28" fill="#0b1020"/>
-  <rect x="10" y="10" width="108" height="108" rx="22" fill="#131a2e" stroke="#3b82f6" stroke-width="4"/>
-  <path d="M36 46l28-14 28 14v36L64 96 36 82z" fill="none" stroke="#60a5fa" stroke-width="6" stroke-linejoin="round"/>
-  <circle cx="64" cy="64" r="10" fill="#3b82f6"/>
+  <rect width="128" height="128" rx="28" fill="#111113"/>
+  <path d="M64 26L98 42V68C98 86.5 83.2 100.2 64 106C44.8 100.2 30 86.5 30 68V42L64 26Z" fill="none" stroke="#FAFAFA" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M51 66L60 75L78 56" fill="none" stroke="#FAFAFA" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 }
 
 export function renderAdminServiceWorker(): string {
-  return `const CACHE_NAME = 'gemini-bastion-admin-shell-v2';
+  return `const CACHE_NAME = 'gemini-bastion-admin-shell-v3';
 const SHELL_URLS = ['/admin/manifest.webmanifest', '/admin/icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -88,14 +154,14 @@ export function renderAdminLoginHtml(params: {
     idpForms.push(`<form method="POST" action="/auth/idp/google/start">
         <input type="hidden" name="purpose" value="admin" />
         <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
-        <button class="btn-idp" type="submit">Sign in with Google</button>
+        <button class="btn-idp" type="submit">${GOOGLE_MONO_SVG}<span>Sign in with Google</span></button>
       </form>`);
   }
   if (githubEnabled) {
     idpForms.push(`<form method="POST" action="/auth/idp/github/start">
         <input type="hidden" name="purpose" value="admin" />
         <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
-        <button class="btn-idp" type="submit">Sign in with GitHub</button>
+        <button class="btn-idp" type="submit">${GITHUB_MONO_SVG}<span>Sign in with GitHub</span></button>
       </form>`);
   }
 
@@ -104,41 +170,148 @@ export function renderAdminLoginHtml(params: {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#131a2e" />
+  <meta name="theme-color" content="#FBFBFB" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#09090B" media="(prefers-color-scheme: dark)" />
   <link rel="manifest" href="/admin/manifest.webmanifest" />
   <link rel="icon" href="/admin/icon.svg" type="image/svg+xml" />
   <title>Admin Login — GeminiBastionMCP</title>
   <style>
+    ${EDITORIAL_THEME_CSS}
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#0b1020; color:#e5e7eb; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:16px; }
-    .card { max-width:420px; width:100%; background:#131a2e; border:1px solid #26314f; border-radius:16px; padding:24px; box-shadow:0 16px 40px rgba(0,0,0,0.45); }
-    .badge { display:inline-block; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#93c5fd; background:#1e293b; border:1px solid #334155; padding:4px 10px; border-radius:999px; margin-bottom:12px; }
-    h1 { margin:0 0 8px; font-size:1.3rem; color:#f8fafc; }
-    p { margin:0 0 18px; font-size:0.9rem; color:#94a3b8; }
-    .err { background:#3f151b; border:1px solid #991b1b; color:#fecaca; padding:10px 12px; border-radius:8px; font-size:0.88rem; margin-bottom:16px; }
-    label { display:block; font-size:0.85rem; font-weight:600; color:#cbd5e1; margin-bottom:6px; }
-    input[type="password"] { width:100%; padding:11px 12px; border-radius:10px; border:1px solid #334155; background:#0b1020; color:#f8fafc; font-size:1rem; margin-bottom:16px; }
-    input[type="password"]:focus { outline:2px solid #3b82f6; border-color:transparent; }
-    button { width:100%; padding:11px 14px; border-radius:10px; font-size:0.95rem; font-weight:600; cursor:pointer; border:none; background:#2563eb; color:#fff; }
-    button:hover { background:#1d4ed8; }
-    .divider { display:flex; align-items:center; gap:10px; margin:18px 0 14px; color:#64748b; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; }
-    .divider::before, .divider::after { content:''; flex:1; height:1px; background:#26314f; }
-    .idp-stack { display:flex; flex-direction:column; gap:10px; }
-    .btn-idp { background:#0f172a; border:1px solid #334155; color:#f8fafc; }
-    .btn-idp:hover { background:#172554; border-color:#3b82f6; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      max-width: 400px;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: var(--shadow);
+    }
+    .mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+      margin-bottom: 20px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+    .sub {
+      margin: 0 0 22px;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      color: var(--ink-2);
+    }
+    .err {
+      background: var(--crimson-bg);
+      border: 1px solid var(--crimson-bd);
+      color: var(--crimson);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--ink-2);
+      margin-bottom: 6px;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 0.9375rem;
+      margin-bottom: 14px;
+      transition: border-color 120ms ease;
+    }
+    input[type="password"]:focus {
+      outline: none;
+      border-color: var(--ink);
+    }
+    button {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: var(--cta-bg);
+      color: var(--cta-fg);
+      transition: opacity 120ms ease, background-color 120ms ease;
+    }
+    button:hover { background: var(--cta-hover); }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 18px 0;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .idp-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn-idp {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--ink);
+    }
+    .btn-idp:hover {
+      background: var(--subtle);
+      border-color: var(--border-strong);
+    }
   </style>
 </head>
 <body>
   <main class="card">
-    <span class="badge">GeminiBastionMCP</span>
+    <div class="mark">${BASTION_MARK_SVG}<span>GeminiBastionMCP</span></div>
     <h1>Operator Console</h1>
-    <p>Sign in with your operator password${idpForms.length > 0 ? ' or a verified upstream account' : ''} to monitor jobs, OAuth sessions, staged plans, and audit logs.</p>
+    <p class="sub">Sign in with your operator password${idpForms.length > 0 ? ' or a verified upstream account' : ''}.</p>
     ${errorMessage ? `<div class="err" role="alert">${escapeHtml(errorMessage)}</div>` : ''}
     <form method="POST" action="/admin/login">
       <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
       <label for="password">Operator Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required autofocus />
-      <button type="submit">Sign In</button>
+      <button type="submit">Continue</button>
     </form>
     ${idpForms.length > 0 ? `<div class="divider">or</div><div class="idp-stack">${idpForms.join('')}</div>` : ''}
   </main>
@@ -167,107 +340,361 @@ export function renderAdminDashboardHtml(params: {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#131a2e" />
+  <meta name="theme-color" content="#FBFBFB" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#09090B" media="(prefers-color-scheme: dark)" />
   <meta name="csrf-token" content="${escapeHtml(csrfToken)}" />
   <link rel="manifest" href="/admin/manifest.webmanifest" />
   <link rel="icon" href="/admin/icon.svg" type="image/svg+xml" />
   <title>Admin Console — GeminiBastionMCP</title>
   <style>
-    :root { --bg:#0b1020; --surface:#131a2e; --surface2:#0e1526; --border:#25304d; --text:#e2e8f0; --muted:#94a3b8; --accent:#3b82f6; --danger:#ef4444; --ok:#22c55e; --warn:#f59e0b; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
-    header { position:sticky; top:0; z-index:10; background:rgba(19,26,46,0.95); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
-    .brand-wrap { display:flex; flex-direction:column; gap:4px; min-width:0; }
-    .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:1rem; }
-    .dot { width:10px; height:10px; border-radius:50%; background:var(--warn); display:inline-block; flex-shrink:0; }
-    .dot.live { background:var(--ok); box-shadow:0 0 8px var(--ok); }
-    .header-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .copy-pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 10px; border-radius:999px; border:1px solid #334155; background:#0d1528; color:#93c5fd; font-size:0.78rem; font-family: ui-monospace, monospace; cursor:pointer; }
-    .copy-pill:hover { border-color:var(--accent); color:#dbeafe; }
-    .copy-pill-tag { font-family: system-ui, -apple-system, sans-serif; font-weight:700; color:#60a5fa; text-transform:uppercase; font-size:0.68rem; }
-    .kpi-strip { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px; padding:12px 16px; background:var(--surface2); border-bottom:1px solid var(--border); }
-    @media (max-width: 680px) { .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    .kpi-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
-    .kpi-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); display:flex; align-items:center; gap:6px; }
-    .kpi-value { font-size:1.35rem; font-weight:700; color:#f8fafc; margin-top:4px; font-variant-numeric: tabular-nums; }
-    .kpi-sub { font-size:0.72rem; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .pulse-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); display:inline-block; }
-    .pulse-dot.active { background:var(--ok); box-shadow:0 0 0 0 rgba(34,197,94,0.7); animation:pulseRing 1.6s infinite; }
-    @keyframes pulseRing { 0% { box-shadow:0 0 0 0 rgba(34,197,94,0.7); } 70% { box-shadow:0 0 0 7px rgba(34,197,94,0); } 100% { box-shadow:0 0 0 0 rgba(34,197,94,0); } }
-    .tabs { display:flex; gap:6px; padding:8px 16px 0; overflow-x:auto; border-bottom:1px solid var(--border); background:var(--surface2); }
-    .tab { background:transparent; color:var(--muted); border:none; border-bottom:2px solid transparent; padding:10px 14px; font-size:0.9rem; font-weight:600; cursor:pointer; white-space:nowrap; }
-    .tab.active { color:#fff; border-bottom-color:var(--accent); }
-    main { max-width:1100px; margin:0 auto; padding:16px; }
-    .panel { display:none; }
-    .panel.active { display:block; }
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
-    .row { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; }
-    .title { font-weight:600; font-size:0.95rem; word-break:break-word; }
-    .meta { font-size:0.8rem; color:var(--muted); font-family: ui-monospace, monospace; margin-top:4px; }
-    .pill { display:inline-block; font-size:0.72rem; font-weight:700; text-transform:uppercase; padding:3px 8px; border-radius:999px; border:1px solid var(--border); background:var(--surface2); }
-    .pill.running, .pill.queued { color:#93c5fd; border-color:#1d4ed8; }
-    .pill.completed, .pill.success, .pill.executed { color:#86efac; border-color:#166534; }
-    .pill.failed, .pill.denied, .pill.cancelled, .pill.timed_out { color:#fca5a5; border-color:#991b1b; }
-    .pill.staged { color:#fde68a; border-color:#92400e; }
-    pre { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; overflow-x:auto; font-size:0.78rem; color:#cbd5e1; margin:10px 0 0; max-height:180px; white-space:pre-wrap; word-break:break-word; }
-    pre.expanded { max-height:none; }
-    .log-toolbar { display:flex; justify-content:flex-end; margin-top:6px; }
-    button.btn { padding:7px 12px; border-radius:8px; border:1px solid var(--border); background:#1e293b; color:#f8fafc; font-size:0.82rem; font-weight:600; cursor:pointer; }
-    button.btn-sm { padding:4px 9px; font-size:0.74rem; }
-    button.btn-danger { background:#7f1d1d; border-color:#b91c1c; color:#fecaca; }
-    button.btn-primary { background:#1d4ed8; border-color:#2563eb; color:#fff; }
-    .empty { color:var(--muted); font-size:0.9rem; padding:16px 0; text-align:center; }
-    select { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:0.82rem; max-width:100%; }
+    ${EDITORIAL_THEME_CSS}
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+    }
+    .header-inner {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      letter-spacing: -0.01em;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ochre);
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .dot.live { background: var(--sage); }
+    .copy-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 100%;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--subtle);
+      color: var(--ink-2);
+      font-size: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      cursor: pointer;
+    }
+    .copy-pill:hover {
+      border-color: var(--border-strong);
+      color: var(--ink);
+    }
+    .copy-pill-tag {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .kpi-wrap {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .kpi-strip {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .kpi-card {
+      padding: 16px 20px;
+      border-right: 1px solid var(--border);
+    }
+    .kpi-card:last-child { border-right: none; }
+    @media (max-width: 700px) {
+      .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .kpi-card:nth-child(2n) { border-right: none; }
+      .kpi-card:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+    }
+    .kpi-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .kpi-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      display: inline-block;
+    }
+    .pulse-dot.active {
+      background: var(--sage);
+      animation: subtlePulse 2.2s ease-in-out infinite;
+    }
+    @keyframes subtlePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .tabs-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .tabs {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      gap: 4px;
+      padding: 0 20px;
+      overflow-x: auto;
+    }
+    .tab {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 11px 12px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 120ms ease;
+    }
+    .tab:hover { color: var(--ink); }
+    .tab.active {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h3 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: 20px 0 10px;
+    }
+    h3:first-child { margin-top: 0; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 10px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .title {
+      font-weight: 600;
+      font-size: 0.9375rem;
+      letter-spacing: -0.01em;
+      word-break: break-word;
+    }
+    .meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      margin-top: 4px;
+      word-break: break-word;
+    }
+    .pill {
+      display: inline-block;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--subtle);
+      color: var(--ink-2);
+    }
+    .pill.running, .pill.queued {
+      color: var(--ink);
+      border-color: var(--border-strong);
+      background: var(--subtle);
+    }
+    .pill.completed, .pill.success, .pill.executed {
+      color: var(--sage);
+      border-color: var(--sage-bd);
+      background: var(--sage-bg);
+    }
+    .pill.failed, .pill.denied, .pill.cancelled, .pill.timed_out {
+      color: var(--crimson);
+      border-color: var(--crimson-bd);
+      background: var(--crimson-bg);
+    }
+    .pill.staged {
+      color: var(--ochre);
+      border-color: var(--ochre-bd);
+      background: var(--ochre-bg);
+    }
+    pre {
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      color: var(--ink-2);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      margin: 12px 0 0;
+      max-height: 180px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    pre.expanded { max-height: none; }
+    .log-toolbar { display: flex; justify-content: flex-end; margin-top: 8px; }
+    button.btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button.btn:hover { background: var(--subtle); border-color: var(--border-strong); }
+    button.btn-sm { padding: 4px 10px; font-size: 0.75rem; color: var(--ink-2); }
+    button.btn-danger {
+      background: var(--crimson-bg);
+      border-color: var(--crimson-bd);
+      color: var(--crimson);
+    }
+    button.btn-danger:hover { opacity: 0.9; }
+    .empty {
+      color: var(--muted);
+      font-size: 0.875rem;
+      padding: 28px 0;
+      text-align: center;
+    }
+    select {
+      background: var(--surface);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.8125rem;
+      max-width: 100%;
+    }
   </style>
 </head>
 <body>
   <header>
-    <div class="brand-wrap">
-      <div class="brand"><span id="sseDot" class="dot"></span> GeminiBastionMCP Admin</div>
-      <button class="copy-pill" type="button" data-action="copy-mcp" data-url="${escapeHtml(mcpEndpoint)}" title="Copy /mcp endpoint URL">
-        <span class="copy-pill-tag">Copy /mcp</span>
-        <span>${escapeHtml(mcpEndpoint)}</span>
-      </button>
-    </div>
-    <div class="header-actions">
-      <form method="POST" action="/admin/logout">
-        <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
-        <button class="btn" type="submit">Logout</button>
-      </form>
+    <div class="header-inner">
+      <div class="brand-wrap">
+        <div class="brand"><span id="sseDot" class="dot" title="SSE connection"></span>${BASTION_MARK_SVG}<span>GeminiBastionMCP Admin</span></div>
+        <button class="copy-pill" type="button" data-action="copy-mcp" data-url="${escapeHtml(mcpEndpoint)}" title="Copy /mcp endpoint URL">
+          <span class="copy-pill-tag">Copy /mcp</span>
+          <span>${escapeHtml(mcpEndpoint)}</span>
+        </button>
+      </div>
+      <div class="header-actions">
+        <form method="POST" action="/admin/logout">
+          <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
+          <button class="btn" type="submit">Sign out</button>
+        </form>
+      </div>
     </div>
   </header>
 
-  <section class="kpi-strip" aria-label="Gateway KPIs">
-    <div class="kpi-card">
-      <div class="kpi-label"><span id="kpiJobsPulse" class="pulse-dot${kpis.activeJobs > 0 ? ' active' : ''}"></span> Active Jobs</div>
-      <div class="kpi-value" id="kpiActiveJobs">${kpis.activeJobs}</div>
-      <div class="kpi-sub">running / queued</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Staged Plans</div>
-      <div class="kpi-value" id="kpiStagedPlans">${kpis.stagedPlans}</div>
-      <div class="kpi-sub">pending approval</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Workspaces</div>
-      <div class="kpi-value" id="kpiWorkspaces">${kpis.workspaces}</div>
-      <div class="kpi-sub" id="kpiLatestSync">${kpis.latestSyncAt ? escapeHtml(new Date(kpis.latestSyncAt).toLocaleString()) : 'no sync yet'}</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">OAuth Sessions</div>
-      <div class="kpi-value" id="kpiOauthSessions">${kpis.oauthSessions}</div>
-      <div class="kpi-sub">active families</div>
-    </div>
-  </section>
+  <div class="kpi-wrap">
+    <section class="kpi-strip" aria-label="Gateway KPIs">
+      <div class="kpi-card">
+        <div class="kpi-label"><span id="kpiJobsPulse" class="pulse-dot${kpis.activeJobs > 0 ? ' active' : ''}"></span> Active Jobs</div>
+        <div class="kpi-value" id="kpiActiveJobs">${kpis.activeJobs}</div>
+        <div class="kpi-sub">running / queued</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Staged Plans</div>
+        <div class="kpi-value" id="kpiStagedPlans">${kpis.stagedPlans}</div>
+        <div class="kpi-sub">pending approval</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Workspaces</div>
+        <div class="kpi-value" id="kpiWorkspaces">${kpis.workspaces}</div>
+        <div class="kpi-sub" id="kpiLatestSync">${kpis.latestSyncAt ? escapeHtml(new Date(kpis.latestSyncAt).toLocaleString()) : 'no sync yet'}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">OAuth Sessions</div>
+        <div class="kpi-value" id="kpiOauthSessions">${kpis.oauthSessions}</div>
+        <div class="kpi-sub">active families</div>
+      </div>
+    </section>
+  </div>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab active" data-tab="jobs">Jobs (Live)</button>
-    <button class="tab" data-tab="workspaces">Workspaces</button>
-    <button class="tab" data-tab="memory">Memory (<span id="tabMemoriesCount">${kpis.memoriesCount}</span>)</button>
-    <button class="tab" data-tab="oauth">OAuth</button>
-    <button class="tab" data-tab="plans">Mutation Plans</button>
-    <button class="tab" data-tab="audit">Audit Logs</button>
-  </nav>
+  <div class="tabs-bar">
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="jobs">Jobs</button>
+      <button class="tab" data-tab="workspaces">Workspaces</button>
+      <button class="tab" data-tab="memory">Memory (<span id="tabMemoriesCount">${kpis.memoriesCount}</span>)</button>
+      <button class="tab" data-tab="oauth">OAuth</button>
+      <button class="tab" data-tab="plans">Plans</button>
+      <button class="tab" data-tab="audit">Audit</button>
+    </nav>
+  </div>
 
   <main>
     <section id="tab-jobs" class="panel active"><div id="jobsList" class="empty">Connecting live stream...</div></section>

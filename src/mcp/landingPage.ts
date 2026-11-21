@@ -50,7 +50,7 @@ const COPY_SCRIPT_BODY = `
     var value = input.value || input.textContent || '';
     var done = function () {
       btn.textContent = 'Copied';
-      if (statusEl) statusEl.textContent = 'Copied /mcp URL to clipboard';
+      if (statusEl) statusEl.textContent = 'Copied /mcp endpoint URL to clipboard.';
       setTimeout(function () {
         btn.textContent = 'Copy';
         if (statusEl) statusEl.textContent = '';
@@ -116,228 +116,418 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
   const safeOAuthMeta = escapeHtml(status.oauthMetadata);
   const safeResourceMeta = escapeHtml(status.protectedResourceMetadata);
   const safeUptime = escapeHtml(formatUptime(status.uptimeSec));
-  const statusLabel = status.dbReady ? 'ONLINE' : 'DEGRADED';
-  const statusColor = status.dbReady ? '#22c55e' : '#f59e0b';
-  const dbLabel = status.dbReady ? 'SQLite WAL Engine: Ready' : 'SQLite WAL Engine: Degraded';
+  const statusState = status.dbReady ? 'Operational' : 'Degraded';
+  const dotClass = status.dbReady ? 'dot-sage' : 'dot-ochre';
+  const dbLabel = status.dbReady ? 'SQLite WAL Ready' : 'SQLite WAL Degraded';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GeminiBastionMCP v0.3.0 — Remote MCP Bastion for Web Gemini, Claude &amp; ChatGPT</title>
+  <title>GeminiBastionMCP v0.3.0 — OAuth 2.1 Streamable HTTP Gateway</title>
   <style>
     :root {
-      --bg: #0b1020;
-      --card: #131a2e;
-      --card-2: #0f1628;
-      --border: #233054;
-      --text: #e6ecff;
-      --muted: #93a3c8;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --green: #22c55e;
-      --yellow: #f59e0b;
-      --red: #ef4444;
+      color-scheme: light dark;
+      --bg: #FBFBFB;
+      --surface: #FFFFFF;
+      --subtle: #F4F4F5;
+      --border: #E4E4E7;
+      --ink: #111113;
+      --secondary: #52525B;
+      --muted: #71717A;
+      --cta-bg: #111113;
+      --cta-hover: #27272A;
+      --cta-fg: #FFFFFF;
+      --sage: #047857;
+      --sage-bg: #ECFDF5;
+      --ochre: #B45309;
+      --ochre-bg: #FFFBEB;
+      --crimson: #B91C1C;
+      --crimson-bg: #FEF2F2;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #09090B;
+        --surface: #111113;
+        --subtle: #18181B;
+        --border: #27272A;
+        --ink: #FAFAFA;
+        --secondary: #A1A1AA;
+        --muted: #71717A;
+        --cta-bg: #FAFAFA;
+        --cta-hover: #E4E4E7;
+        --cta-fg: #09090B;
+        --sage: #10B981;
+        --sage-bg: rgba(16, 185, 129, 0.12);
+        --ochre: #F59E0B;
+        --ochre-bg: rgba(245, 158, 11, 0.12);
+        --crimson: #F87171;
+        --crimson-bg: rgba(248, 113, 113, 0.12);
+      }
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      background: radial-gradient(circle at top right, #182347 0%, var(--bg) 52%);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
-      line-height: 1.5;
-      padding: 24px 16px 48px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.55;
+      padding: 40px 20px 64px;
     }
-    .wrap { max-width: 920px; margin: 0 auto; }
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
+    }
     .topbar {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      gap: 12px;
+      justify-content: space-between;
+      gap: 16px;
       flex-wrap: wrap;
-      margin-bottom: 24px;
-      padding: 12px 16px;
-      background: rgba(19, 26, 46, 0.85);
-      border: 1px solid var(--border);
-      border-radius: 14px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 36px;
     }
-    .brand-row { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; }
-    .pill {
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      color: var(--ink);
+      flex-shrink: 0;
+    }
+    .brand-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+    }
+    .status-pill {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      padding: 4px 10px;
+      padding: 3px 9px;
       border-radius: 999px;
-      background: rgba(34, 197, 94, 0.14);
-      border: 1px solid ${statusColor};
-      color: ${statusColor};
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--secondary);
+      font-variant-numeric: tabular-nums;
     }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: ${statusColor}; }
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-sage { background: var(--sage); }
+    .dot-ochre { background: var(--ochre); }
+    .nav-link {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--secondary);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .nav-link:hover { color: var(--ink); }
+    .hero {
+      margin-bottom: 28px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.5rem, 3vw, 1.85rem);
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      line-height: 1.25;
+      color: var(--ink);
+    }
+    .hero p {
+      margin: 0;
+      font-size: 0.95rem;
+      color: var(--secondary);
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+      margin-bottom: 16px;
+    }
+    .section-label {
+      margin: 0 0 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .endpoint-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .endpoint-input {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--subtle);
+      color: var(--ink);
+      font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.84rem;
+      outline: none;
+    }
+    .endpoint-input:focus { border-color: var(--ink); }
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      padding: 9px 15px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: var(--accent);
-      color: #fff;
-      font-weight: 600;
-      font-size: 0.9rem;
-      text-decoration: none;
+      padding: 9px 16px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: var(--cta-bg);
+      color: var(--cta-fg);
+      font-size: 0.84rem;
+      font-weight: 500;
       cursor: pointer;
+      white-space: nowrap;
+      text-decoration: none;
+      transition: background-color 0.15s ease;
     }
-    .btn:hover { background: var(--accent-hover); }
-    .btn-ghost { background: var(--card-2); color: var(--text); }
-    .btn-ghost:hover { border-color: var(--accent); background: #17213d; }
-    .hero { margin-bottom: 20px; }
-    .hero h1 { margin: 0 0 8px; font-size: clamp(1.5rem, 3.2vw, 2.1rem); letter-spacing: -0.02em; }
-    .hero p { margin: 0; color: var(--muted); font-size: 0.98rem; }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 18px 20px;
-      margin-bottom: 16px;
+    .btn:hover { background: var(--cta-hover); }
+    #copy-status {
+      min-height: 1.15em;
+      margin-top: 6px;
+      font-size: 0.78rem;
+      color: var(--sage);
     }
-    .card-title { margin: 0 0 10px; font-size: 0.95rem; font-weight: 700; color: #c7d5ff; text-transform: uppercase; letter-spacing: 0.05em; }
-    .endpoint-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
-    .endpoint-input {
-      flex: 1 1 260px;
-      min-width: 0;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: var(--card-2);
-      color: var(--text);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.9rem;
-    }
-    .meta-list {
+    .kv-list {
       margin: 12px 0 0;
-      padding: 0;
-      list-style: none;
+      padding: 12px 0 0;
+      border-top: 1px solid var(--border);
       display: grid;
-      gap: 6px;
-      font-size: 0.86rem;
-      color: var(--muted);
+      gap: 8px;
     }
-    .meta-list a { color: #7db0ff; text-decoration: none; word-break: break-all; }
-    .meta-list a:hover { text-decoration: underline; }
-    .grid-3 {
+    .kv-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 0.82rem;
+    }
+    .kv-key { color: var(--muted); flex-shrink: 0; }
+    .kv-val {
+      font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      color: var(--secondary);
+      text-decoration: none;
+      word-break: break-all;
+      text-align: right;
+    }
+    .kv-val:hover { color: var(--ink); text-decoration: underline; }
+    .kv-static {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .connect-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
     }
-    .mini-card {
-      background: var(--card-2);
+    .connect-item {
+      padding: 12px 14px;
+      border-radius: 8px;
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px;
+      background: var(--bg);
     }
-    .mini-card h3 { margin: 0 0 6px; font-size: 0.95rem; color: var(--text); }
-    .mini-card p { margin: 0; font-size: 0.85rem; color: var(--muted); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.82rem; color: #b9ccff; }
-    .badges { display: flex; flex-wrap: wrap; gap: 8px; }
-    .badge {
-      display: inline-flex;
+    .connect-item h3 {
+      margin: 0 0 4px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .connect-item p {
+      margin: 0;
+      font-size: 0.79rem;
+      line-height: 1.45;
+      color: var(--secondary);
+    }
+    .mono-inline {
+      font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.76rem;
+      color: var(--ink);
+    }
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .tool-row {
+      display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 12px;
+      background: var(--surface);
       font-size: 0.8rem;
-      background: var(--card-2);
-      border: 1px solid var(--border);
     }
-    .tier-1 { border-color: rgba(34, 197, 94, 0.45); color: #bdf7cf; }
-    .tier-2 { border-color: rgba(245, 158, 11, 0.55); color: #fde68a; }
-    .tier-3 { border-color: rgba(239, 68, 68, 0.65); color: #fecaca; }
-    .cta { display: flex; justify-content: center; margin-top: 20px; }
-    #copy-status { margin-top: 8px; min-height: 1.1em; font-size: 0.82rem; color: #86efac; }
+    .tool-name {
+      font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.79rem;
+      color: var(--ink);
+    }
+    .tier-tag {
+      font-size: 0.7rem;
+      font-weight: 500;
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--subtle);
+      white-space: nowrap;
+    }
+    .tier-stage {
+      color: var(--ochre);
+      background: var(--ochre-bg);
+      border-color: rgba(180, 83, 9, 0.25);
+    }
+    .tier-gate {
+      color: var(--crimson);
+      background: var(--crimson-bg);
+      border-color: rgba(185, 28, 28, 0.25);
+    }
+    .cap-note {
+      margin: 12px 0 0;
+      font-size: 0.79rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    @media (max-width: 600px) {
+      body { padding: 24px 16px 48px; }
+      .connect-grid, .tool-grid { grid-template-columns: 1fr; }
+      .endpoint-row { flex-direction: column; }
+      .kv-val { text-align: left; }
+    }
   </style>
 </head>
 <body>
   <main class="wrap">
     <header class="topbar">
-      <div class="brand-row">
-        <span class="pill"><span class="dot"></span>${statusLabel}</span>
-        <span>GeminiBastionMCP</span>
-        <span class="mono">v0.3.0</span>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 3v5c0 4.9-3 8.9-7 10-4-1.1-7-5.1-7-10V6l7-3z" />
+            <path d="M9.5 12l1.8 1.8L15 10" />
+          </svg>
+        </span>
+        <span class="brand-name">GeminiBastionMCP</span>
+        <span class="status-pill"><span class="dot ${dotClass}"></span>${statusState} &middot; v0.3.0</span>
       </div>
-      <a class="btn btn-ghost" href="/admin">Operator /admin &rarr;</a>
+      <a class="nav-link" href="/admin">Operator Console &rarr;</a>
     </header>
 
     <section class="hero">
-      <h1>Remote MCP 2025-11-25 &amp; OAuth 2.1 Bastion for Web Gemini, Claude.ai &amp; ChatGPT</h1>
-      <p>Stateless Streamable HTTP &middot; PKCE (S256) &middot; Dynamic Client Registration &middot; Per-Workspace bwrap Jail &middot; 10 Tools, 1 Approval Gate</p>
+      <h1>Remote MCP 2025-11-25 &amp; OAuth 2.1 Gateway</h1>
+      <p>Self-hosted OAuth 2.1 Streamable HTTP gateway for Web Gemini, Claude.ai, and ChatGPT.</p>
     </section>
 
     <section class="card">
-      <h2 class="card-title">MCP Streamable HTTP Endpoint</h2>
+      <h2 class="section-label">MCP Streamable HTTP Endpoint</h2>
       <div class="endpoint-row">
         <input id="mcp-endpoint-input" class="endpoint-input" type="text" readonly value="${safeEndpoint}" aria-label="MCP Endpoint URL" />
         <button id="copy-mcp-btn" class="btn" type="button">Copy</button>
       </div>
       <div id="copy-status" aria-live="polite"></div>
-      <ul class="meta-list">
-        <li>OAuth 2.1 Metadata: <a href="/.well-known/oauth-authorization-server">${safeOAuthMeta}</a></li>
-        <li>Protected Resource: <a href="/.well-known/oauth-protected-resource">${safeResourceMeta}</a></li>
-        <li>${escapeHtml(dbLabel)} &middot; Uptime: ${safeUptime}</li>
-      </ul>
+      <div class="kv-list">
+        <div class="kv-row">
+          <span class="kv-key">OAuth Authorization Server</span>
+          <a class="kv-val" href="/.well-known/oauth-authorization-server">${safeOAuthMeta}</a>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Protected Resource Metadata</span>
+          <a class="kv-val" href="/.well-known/oauth-protected-resource">${safeResourceMeta}</a>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Runtime Health</span>
+          <span class="kv-static">${escapeHtml(dbLabel)} &middot; Uptime ${safeUptime}</span>
+        </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2 class="card-title">Quick Connect — Web Gemini, Claude.ai &amp; ChatGPT</h2>
-      <div class="grid-3">
-        <article class="mini-card">
-          <h3>Web Gemini (gemini.google.com)</h3>
-          <p>Open <strong>Connected Apps</strong> &rarr; Add custom MCP &rarr; paste the <span class="mono">/mcp</span> URL above. OAuth 2.1 DCR + PKCE runs automatically.</p>
+      <h2 class="section-label">Connect Client</h2>
+      <div class="connect-grid">
+        <article class="connect-item">
+          <h3>Web Gemini</h3>
+          <p>Open <strong>Connected Apps</strong> &rarr; Add custom MCP &rarr; paste the <span class="mono-inline">/mcp</span> URL. OAuth 2.1 DCR &amp; PKCE (S256) run automatically.</p>
         </article>
-        <article class="mini-card">
+        <article class="connect-item">
           <h3>Claude.ai &amp; ChatGPT</h3>
-          <p>Add a <strong>Custom Connector</strong> pointing to the <span class="mono">/mcp</span> endpoint. Supports stateless Streamable HTTP and RFC 8707 resource binding.</p>
+          <p>Add a <strong>Custom Connector</strong> using the <span class="mono-inline">/mcp</span> endpoint with stateless Streamable HTTP and RFC 8707 resource binding.</p>
         </article>
-        <article class="mini-card">
-          <h3>Static OAuth &amp; SSO</h3>
-          <p>Authorize: <span class="mono">/oauth/authorize</span><br />Token: <span class="mono">/oauth/token</span><br />DCR: <span class="mono">/oauth/register</span></p>
+        <article class="connect-item">
+          <h3>Static OAuth</h3>
+          <p><span class="mono-inline">/oauth/authorize</span><br /><span class="mono-inline">/oauth/token</span><br /><span class="mono-inline">/oauth/register</span></p>
         </article>
       </div>
     </section>
 
     <section class="card">
-      <h2 class="card-title">10-Tool Contract &amp; Multi-Agent Drivers</h2>
-      <div class="badges" style="margin-bottom: 10px;">
-        <span class="badge tier-1">&#x1F7E2; workspace_manage</span>
-        <span class="badge tier-1">&#x1F7E2; code_explore</span>
-        <span class="badge tier-1">&#x1F7E2; code_patch</span>
-        <span class="badge tier-1">&#x1F7E2; workspace_exec</span>
-        <span class="badge tier-1">&#x1F7E2; dispatch_runner</span>
-        <span class="badge tier-1">&#x1F7E2; job_status</span>
-        <span class="badge tier-1">&#x1F7E2; github_inspect</span>
-        <span class="badge tier-1">&#x1F7E2; infra_inspect</span>
-        <span class="badge tier-2">&#x1F7E1; stage_mutation_plan</span>
-        <span class="badge tier-3">&#x1F534; publish_changes (Single External Write Gate)</span>
+      <h2 class="section-label">10-Tool Surface &amp; Single Approval Gate</h2>
+      <div class="tool-grid">
+        <div class="tool-row"><span class="tool-name">workspace_manage</span><span class="tier-tag">Workspace</span></div>
+        <div class="tool-row"><span class="tool-name">code_explore</span><span class="tier-tag">Read</span></div>
+        <div class="tool-row"><span class="tool-name">code_patch</span><span class="tier-tag">Sandbox</span></div>
+        <div class="tool-row"><span class="tool-name">workspace_exec</span><span class="tier-tag">Sandbox</span></div>
+        <div class="tool-row"><span class="tool-name">dispatch_runner</span><span class="tier-tag">Drivers</span></div>
+        <div class="tool-row"><span class="tool-name">job_status</span><span class="tier-tag">Read</span></div>
+        <div class="tool-row"><span class="tool-name">github_inspect</span><span class="tier-tag">Read</span></div>
+        <div class="tool-row"><span class="tool-name">infra_inspect</span><span class="tier-tag">Read</span></div>
+        <div class="tool-row"><span class="tool-name">stage_mutation_plan</span><span class="tier-tag tier-stage">Stage</span></div>
+        <div class="tool-row"><span class="tool-name">publish_changes</span><span class="tier-tag tier-gate">Approval Gate</span></div>
       </div>
-      <div class="badges">
-        <span class="badge">Drivers: Codex SDK / Claude Code / Gemini CLI / OpenCode</span>
-        <span class="badge">Isolation: bwrap FS &amp; --unshare-net Jail</span>
-        <span class="badge">Federation: Authenticated MCP-2 Proxy</span>
-        <span class="badge">Persistent Memory: Cross-Session Recall</span>
-        <span class="badge">MCP Prompts: 4 Guided Workflows</span>
-        <span class="badge">Watchdog: Read-Only CI Triage</span>
-      </div>
+      <p class="cap-note">
+        Isolated via <span class="mono-inline">bwrap</span> filesystem &amp; network jails &middot; Multi-agent drivers (Codex SDK, Claude Code, Gemini CLI, OpenCode) &middot; Persistent Memory &middot; 4 MCP Prompts &middot; Read-Only CI Watchdog &middot; Authenticated MCP-2 Federation.
+      </p>
     </section>
 
-    <div class="cta">
-      <a class="btn" href="/admin">Sign in to Operator Console (/admin)</a>
-    </div>
+    <footer class="footer">
+      <span>Zero private workspace or credential data is exposed on this page.</span>
+      <a class="nav-link" href="/admin">Sign in to /admin &rarr;</a>
+    </footer>
   </main>
   <script>${COPY_SCRIPT_BODY}</script>
 </body>
