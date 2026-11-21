@@ -22,7 +22,7 @@
 
 **[English](README.md) | 简体中文**
 
-[项目主页 (Live Showcase)](https://kaiserunix.github.io/gemini-bastion-mcp/) · [为什么做这个项目](#为什么做这个项目why-this-exists) · [整体架构](#整体架构图) · [10 大工具与持久化记忆](#10-大工具1-道审批闸门) · [Gem 提示词与 MCP Prompts](#gemini-gem-提示词跨会话记忆与-mcp-prompts) · [只读 CI Watchdog](#可选只读-github-ci-watchdog) · [1 分钟上手](#1-分钟快速上手ghcr-零编译拉取) · [安全防线 v2](#安全架构-v2六层纵深防御) · [MCP Registry](#官方-mcp-registry-与-ghcr-镜像)
+[项目主页 (Live Showcase)](https://kaiserunix.github.io/gemini-bastion-mcp/) · [为什么做这个项目](#为什么做这个项目why-this-exists) · [整体架构](#整体架构图) · [10 大工具与持久化记忆](#10-大工具1-道审批闸门) · [Gem 提示词与 MCP Prompts](#gemini-gem-提示词跨会话记忆与-mcp-prompts) · [只读 CI Watchdog](#可选只读-github-ci-watchdog) · [1 分钟上手](#1-分钟快速上手ghcr-零编译拉取) · [安全防线 v2](#安全架构-v2六层纵深防御) · [MCP Registry](#官方-mcp-registry-与-ghcr-镜像) · [文档索引](docs/INDEX.md)
 
 </div>
 
@@ -34,6 +34,17 @@
 
 > [!TIP]
 > **免本地编译！** 直接拉取 GHCR 预构建双版本镜像（`ghcr.io/kaiserunix/gemini-bastion-mcp:lite` 约 350MB 或 `:full` 全家桶），执行 `docker compose pull && docker compose up -d` 即可在 60 秒内上线。
+
+---
+
+## 60 秒手机端「一句指令 → 发起 PR」实景体验
+
+> **你在手机 Web Gemini 中输入：** *「查一下 PR #42 的 CI 为什么挂了，修复后跑测试，再提一个修复 PR。」*
+>
+> 1. `github_inspect` *（Tier 1 · 始终允许）* — 拉取失败的 Actions 日志（带防 Prompt 注入的不可信数据边界）。
+> 2. `workspace_manage` + `code_explore` *（Tier 1 · 始终允许）* — 同步仓库至 `/workspaces/{slug}`、自动召回置顶记忆，并用 `ripgrep` / `ast-grep` 精准定位根因。
+> 3. `code_patch` + `workspace_exec` *（Tier 1 · 始终允许）* — 自动创建 `GIT_INDEX_FILE` 快照、打原子补丁，并在单工作区 `bwrap` 断网沙盒内以零网关密钥的 UID `1002`（`worker`）运行测试套件。
+> 4. `publish_changes` *（Tier 3 · **每次询问 — 全程唯一 1 次弹窗**）* — 展示脱敏后的分支与 PR 摘要，点击 **允许** 即在非保护分支发起 PR（物理拦截直推 `main`/`master`）。
 
 ---
 
@@ -375,6 +386,7 @@ npm run dev
 > **遇到 Bug、想新增智能体驱动，或在 Gemini / Claude / ChatGPT 接入中遇到 OAuth 兼容细节？**
 > 欢迎随时 [提交 GitHub Issue](https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose)、发起 PR，或在 [GitHub Discussions](https://github.com/Kaiserunix/gemini-bastion-mcp/discussions) 交流讨论——社区反馈将直接驱动下一版本迭代！
 
+- **文档导航**：[文档索引 (`docs/INDEX.md`)](docs/INDEX.md) · [工程架构 (`DESIGN.md`)](DESIGN.md) · [Gemini Gem 提示词 (`docs/GEMINI_GEM_PROMPT.md`)](docs/GEMINI_GEM_PROMPT.md) · [产品策略 (`docs/PRODUCT_STRATEGY.md`)](docs/PRODUCT_STRATEGY.md) · [UX 设计规范 (`docs/UX_EXPERIENCE_AND_DESIGN_SPEC.md`)](docs/UX_EXPERIENCE_AND_DESIGN_SPEC.md)
 - **路线图**：每任务独立容器 / microVM 隔离沙盒（`v0.3`）以及多管理员 RBAC 策略。
 - **参与贡献**：请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发环境配置、架构红线与 PR 检查清单。
 - **安全政策**：请参阅 [SECURITY.md](SECURITY.md) 了解安全模型与漏洞私密上报方式。
