@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
-import type { OAuthRepository } from '../db/repositories/oauthRepo.js';
-import type { AuditRepository } from '../db/repositories/auditRepo.js';
 import type { GatewayConfig, OAuthClient } from '../types.js';
 import { generateId, generateRandomToken, hashToken } from './crypto.js';
 import { getClientIp, IpRateLimiter, readLimitedBodyText } from './rateLimit.js';
+import type { AuditLogger, OAuthStore, RateLimiter } from './store.js';
 
 export const MAX_DCR_REDIRECT_URIS = 16;
 export const MAX_DYNAMIC_CLIENTS = 500;
@@ -102,9 +101,9 @@ export function isAllowedRedirectUri(uri: string, allowedHosts: string[]): boole
  */
 export function ensureStaticClient(
   config: GatewayConfig,
-  oauthRepo: OAuthRepository,
+  oauthStore: Pick<OAuthStore, 'retireStaleStaticClients' | 'upsertStaticClient'>,
 ): OAuthClient | null {
-  oauthRepo.retireStaleStaticClients(config.oauthStaticClientId);
+  oauthStore.retireStaleStaticClients(config.oauthStaticClientId);
 
   if (!config.oauthStaticClientId) {
     return null;
@@ -114,7 +113,7 @@ export function ensureStaticClient(
     ? hashToken(config.oauthStaticClientSecret)
     : null;
 
-  return oauthRepo.upsertStaticClient({
+  return oauthStore.upsertStaticClient({
     client_id: config.oauthStaticClientId,
     client_secret_hash: secretHash,
     client_name: 'Static Fallback Client',
@@ -124,9 +123,11 @@ export function ensureStaticClient(
 
 export interface DcrDeps {
   config: GatewayConfig;
-  oauthRepo: OAuthRepository;
-  auditRepo?: AuditRepository;
-  registerRateLimiter?: IpRateLimiter;
+  oauthStore?: Pick<OAuthStore, 'listClients' | 'createClient'>;
+  oauthRepo?: Pick<OAuthStore, 'listClients' | 'createClient'>;
+  auditRepo?: AuditLogger;
+  auditLogger?: AuditLogger;
+  registerRateLimiter?: RateLimiter;
   maxDynamicClients?: number;
 }
 
@@ -134,7 +135,12 @@ export interface DcrDeps {
  * Mounts RFC 7591 Dynamic Client Registration (`POST /oauth/register`).
  */
 export function createDcrRoutes(deps: DcrDeps): Hono {
-  const { config, oauthRepo, auditRepo } = deps;
+  const { config } = deps;
+  const oauthRepo = deps.oauthStore ?? deps.oauthRepo;
+  if (!oauthRepo) {
+    throw new Error('createDcrRoutes requires oauthStore or oauthRepo');
+  }
+  const auditRepo = deps.auditLogger ?? deps.auditRepo;
   const registerRateLimiter = deps.registerRateLimiter ?? new IpRateLimiter(20, 60_000);
   const maxDynamicClients = deps.maxDynamicClients ?? MAX_DYNAMIC_CLIENTS;
   const app = new Hono();

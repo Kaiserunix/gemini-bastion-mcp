@@ -1,13 +1,8 @@
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { GatewayConfig } from '../types.js';
-import {
-  generateRandomToken,
-  resolveSigningSecret,
-  signSessionCookie,
-  verifySessionCookie,
-  type AdminSessionPayload,
-} from './crypto.js';
+import type { AdminSessionPayload } from './crypto.js';
+import { SignedCookieAdminSessionManager, type AdminSessionManager } from './store.js';
 
 export const ADMIN_SESSION_COOKIE_NAME = 'gb_admin_session';
 export const ADMIN_CSRF_COOKIE_NAME = 'gb_admin_csrf';
@@ -25,22 +20,17 @@ export function issueAdminSessionCookie(
   c: Context,
   config: GatewayConfig,
   now = Date.now(),
+  sessionManager?: AdminSessionManager,
 ): AdminSessionPayload {
-  const signingSecret = resolveSigningSecret(config);
-  const payload: AdminSessionPayload = {
-    sub: 'admin',
-    csrf: generateRandomToken(24),
-    iat: now,
-    exp: now + ADMIN_SESSION_TTL_MS,
-  };
-  const signedCookie = signSessionCookie(payload, signingSecret);
+  const manager = sessionManager ?? new SignedCookieAdminSessionManager(config);
+  const { token, payload } = manager.issue(now);
 
-  setCookie(c, ADMIN_SESSION_COOKIE_NAME, signedCookie, {
+  setCookie(c, ADMIN_SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'Lax',
     secure: isHttpsDomain(config),
     path: '/admin',
-    maxAge: Math.floor(ADMIN_SESSION_TTL_MS / 1000),
+    maxAge: Math.floor(manager.ttlMs / 1000),
   });
 
   return payload;
@@ -50,9 +40,11 @@ export function readAdminSessionCookie(
   c: Context,
   config: GatewayConfig,
   now = Date.now(),
+  sessionManager?: AdminSessionManager,
 ): AdminSessionPayload | null {
+  const manager = sessionManager ?? new SignedCookieAdminSessionManager(config);
   const raw = getCookie(c, ADMIN_SESSION_COOKIE_NAME);
-  return verifySessionCookie(raw, resolveSigningSecret(config), now);
+  return manager.verify(raw, now);
 }
 
 export function clearAdminSessionCookie(c: Context): void {
