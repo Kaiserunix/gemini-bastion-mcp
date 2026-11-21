@@ -13,7 +13,7 @@
 [![Deploy GitHub Pages](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/pages.yml/badge.svg)](https://kaiserunix.github.io/gemini-bastion-mcp/)
 [![Release v0.3.0](https://img.shields.io/badge/Release-v0.3.0-6366f1?style=flat-square)](CHANGELOG.md)
 [![GHCR lite | full](https://img.shields.io/badge/GHCR-lite%20(~350MB)%20%7C%20full-0ea5e9?style=flat-square)](https://github.com/Kaiserunix/gemini-bastion-mcp/pkgs/container/gemini-bastion-mcp)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.kaiserunix%2Fgemini--bastion--mcp-8b5cf6?style=flat-square)](server.json)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.Kaiserunix%2Fgemini--bastion--mcp-8b5cf6?style=flat-square)](server.json)
 [![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
 [![MCP 2025-11-25](https://img.shields.io/badge/MCP-2025--11--25%20Streamable%20HTTP-3b82f6?style=flat-square)](https://modelcontextprotocol.io)
 [![OAuth 2.1 + PKCE + DCR](https://img.shields.io/badge/OAuth%202.1-PKCE%20%2B%20DCR%20%2B%20RFC%208707-10b981?style=flat-square)](#连接-ai-客户端)
@@ -360,7 +360,7 @@ npm run dev
 
 ## 官方 MCP Registry 与 GHCR 镜像
 
-- **官方 MCP Registry 清单**：[`server.json`](server.json)（`io.github.kaiserunix/gemini-bastion-mcp`，schema `2025-12-11`，已通过 `mcp-publisher` 实测校验）。
+- **官方 MCP Registry 清单**：[`server.json`](server.json)（`io.github.Kaiserunix/gemini-bastion-mcp`，schema `2025-12-11`，已通过 `mcp-publisher` 实测校验）。
 - **基于 `github-oidc` 的全自动发布**：推送 `v*` 标签将触发 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) 先完成 GHCR 镜像推送，再自动执行 `publish-mcp-registry` 任务（`mcp-publisher validate` -> `mcp-publisher login github-oidc` -> `mcp-publisher publish server.json`）。
 - **GHCR 预构建镜像**：
   - `ghcr.io/kaiserunix/gemini-bastion-mcp:lite` / `:latest` / `:<version>-lite`（约 350MB 轻量版：`bwrap` + `git` + `ripgrep`）

@@ -90,7 +90,7 @@ LABEL org.opencontainers.image.title="GeminiBastionMCP" \
       org.opencontainers.image.description="Self-hosted OAuth 2.1 Streamable HTTP MCP bastion for Web Gemini, Claude & ChatGPT" \
       org.opencontainers.image.source="https://github.com/Kaiserunix/gemini-bastion-mcp" \
       org.opencontainers.image.licenses="MIT" \
-      io.modelcontextprotocol.server.name="io.github.kaiserunix/gemini-bastion-mcp"
+      io.modelcontextprotocol.server.name="io.github.Kaiserunix/gemini-bastion-mcp"
 
 USER gateway
 

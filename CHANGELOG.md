@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - **Zero-Build GHCR Dual Images & Official MCP Registry (`server.json`)**:
   - Added multi-target `docker/Dockerfile` (`runtime-lite` ~300–400MB fast onboarding image + `runtime-full` full linter/toolchain image) and `.github/workflows/docker-publish.yml` publishing `ghcr.io/kaiserunix/gemini-bastion-mcp:{lite,full,latest}` and `ghcr.io/kaiserunix/gemini-bastion-mcp-ops:latest`.
-  - Added Official MCP Registry manifest [`server.json`](server.json) (`io.github.kaiserunix/gemini-bastion-mcp`, schema `2025-12-11`).
+  - Added Official MCP Registry manifest [`server.json`](server.json) (`io.github.Kaiserunix/gemini-bastion-mcp`, schema `2025-12-11`).
 - **Per-Workspace `bwrap` Filesystem & Network Jail (`Security v2`)**:
   - `workspace_exec` and CLI agent drivers run inside a per-workspace Linux `bubblewrap` (`bwrap`) sandbox (`--ro-bind / /`, `--tmpfs /workspaces`, `--bind <workspaceDir>`, `--tmpfs /data`, `--unshare-net` by default; opt-in `allow_network: true` on `workspace_exec`), configurable via `SANDBOX_BWRAP_ISOLATION` and fail-closed `SANDBOX_STRICT_ISOLATION`.
 - **Pluggable Multi-Agent Drivers**:

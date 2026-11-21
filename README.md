@@ -13,7 +13,7 @@
 [![Deploy GitHub Pages](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/pages.yml/badge.svg)](https://kaiserunix.github.io/gemini-bastion-mcp/)
 [![Release v0.3.0](https://img.shields.io/badge/Release-v0.3.0-6366f1?style=flat-square)](CHANGELOG.md)
 [![GHCR lite | full](https://img.shields.io/badge/GHCR-lite%20(~350MB)%20%7C%20full-0ea5e9?style=flat-square)](https://github.com/Kaiserunix/gemini-bastion-mcp/pkgs/container/gemini-bastion-mcp)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.kaiserunix%2Fgemini--bastion--mcp-8b5cf6?style=flat-square)](server.json)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.Kaiserunix%2Fgemini--bastion--mcp-8b5cf6?style=flat-square)](server.json)
 [![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
 [![MCP 2025-11-25](https://img.shields.io/badge/MCP-2025--11--25%20Streamable%20HTTP-3b82f6?style=flat-square)](https://modelcontextprotocol.io)
 [![OAuth 2.1 + PKCE + DCR](https://img.shields.io/badge/OAuth%202.1-PKCE%20%2B%20DCR%20%2B%20RFC%208707-10b981?style=flat-square)](#connecting-ai-clients)
@@ -360,7 +360,7 @@ Enable `WATCHDOG_ENABLED=true` with `GITHUB_WEBHOOK_SECRET` (`>= 24` chars) and 
 
 ## Official MCP Registry & GHCR Images
 
-- **Official MCP Registry**: [`server.json`](server.json) (`io.github.kaiserunix/gemini-bastion-mcp`, schema `2025-12-11`, validated via `mcp-publisher`).
+- **Official MCP Registry**: [`server.json`](server.json) (`io.github.Kaiserunix/gemini-bastion-mcp`, schema `2025-12-11`, validated via `mcp-publisher`).
 - **Automated OIDC Publishing (`github-oidc`)**: Tagging `v*` triggers [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) to push GHCR images first and then run `publish-mcp-registry` (`mcp-publisher validate` -> `mcp-publisher login github-oidc` -> `mcp-publisher publish server.json`).
 - **GHCR Images**:
   - `ghcr.io/kaiserunix/gemini-bastion-mcp:lite` / `:latest` / `:<version>-lite` (~350MB slim gateway + `bwrap` + `git` + `ripgrep`)

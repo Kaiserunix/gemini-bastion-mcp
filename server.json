@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.kaiserunix/gemini-bastion-mcp",
+  "name": "io.github.Kaiserunix/gemini-bastion-mcp",
   "title": "GeminiBastionMCP — Remote MCP Bastion for Web Gemini, Claude & ChatGPT",
   "description": "OAuth 2.1 MCP bastion for Web Gemini, Claude & ChatGPT: 10 tools, 1 gate, bwrap & multi-agent.",
   "version": "0.3.0",

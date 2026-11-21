@@ -59,7 +59,7 @@
 
     <!-- Main Title -->
     <text x="0" y="84" fill="#f8fafc" font-size="52" font-weight="800" letter-spacing="-1">GeminiBastionMCP</text>
-    <text x="488" y="78" fill="#60a5fa" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15.5" font-weight="600">io.github.kaiserunix/gemini-bastion-mcp</text>
+    <text x="488" y="78" fill="#60a5fa" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15.5" font-weight="600">io.github.Kaiserunix/gemini-bastion-mcp</text>
 
     <!-- Subtitle -->
     <text x="0" y="122" fill="#e2e8f0" font-size="19.5" font-weight="700">Persistent Agent Memory · MCP Prompts · Read-Only CI Watchdog · 10 Tools · 1 Gate</text>
