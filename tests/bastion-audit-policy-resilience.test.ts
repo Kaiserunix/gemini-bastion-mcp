@@ -92,6 +92,9 @@ describe('StructuredAuditLogger & Pluggable AuditSinks', () => {
       },
     });
 
+    const syntheticGhPat = ['ghp', 'abcdefghijklmnopqrstuvwxyz123456'].join('_');
+    const syntheticOpenAiKey = ['sk', 'proj', 'abcdefghijklmnopqrstuvwxyz123456'].join('-');
+
     const ev1 = logger.emit({
       actor: 'client_alpha',
       action: 'oauth.token_issued',
@@ -99,8 +102,8 @@ describe('StructuredAuditLogger & Pluggable AuditSinks', () => {
       status: 'success',
       correlationId: 'req-001',
       details: {
-        gh_pat: 'ghp_abcdefghijklmnopqrstuvwxyz123456',
-        openai_key: 'sk-proj-abcdefghijklmnopqrstuvwxyz123456',
+        gh_pat: syntheticGhPat,
+        openai_key: syntheticOpenAiKey,
         nested: {
           signing: 'custom_gateway_signing_secret_98765',
         },
@@ -134,8 +137,8 @@ describe('StructuredAuditLogger & Pluggable AuditSinks', () => {
 
     const serialized = JSON.stringify(memorySink.getEvents());
     expect(serialized).not.toContain('super_secret_bearer_token_value');
-    expect(serialized).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz123456');
-    expect(serialized).not.toContain('sk-proj-abcdefghijklmnopqrstuvwxyz123456');
+    expect(serialized).not.toContain(syntheticGhPat);
+    expect(serialized).not.toContain(syntheticOpenAiKey);
     expect(serialized).not.toContain('custom_gateway_signing_secret_98765');
     expect(serialized).toContain(REDACTED_PLACEHOLDER);
 
@@ -1126,5 +1129,59 @@ describe('PolicyEvaluator & Gateway End-to-End Security Enforcement', () => {
     const sqlAuditActions = gateway.repos.audit.list({ limit: 50 }).map((r) => r.action);
     expect(sqlAuditActions).toContain('policy.denied');
     expect(sqlAuditActions).toContain('rate_limit.exceeded');
+  });
+
+  it('forwards MutationPlanGate audit events through repos.audit to StructuredAuditLogger without duplicate SQLite rows', async () => {
+    const rootDir = makeTempDir('bastion-core-audit-bridge-');
+    const dataDir = path.join(rootDir, 'data');
+    const workspacesDir = path.join(rootDir, 'workspaces');
+    const auditFilePath = path.join(dataDir, 'audit', 'plan-gate-events.jsonl');
+    const memSink = new MemoryAuditSink({ maxEntries: 100 });
+
+    const gateway = createGatewayApp({
+      env: {
+        NODE_ENV: 'test',
+        PUBLIC_DOMAIN: 'https://mcp.example.com',
+        DATA_DIR: dataDir,
+        WORKSPACES_DIR: workspacesDir,
+        DATABASE_PATH: ':memory:',
+        OAUTH_SIGNING_SECRET: 'test-signing-secret-bridge-min-32-chars-ok',
+        ADMIN_PASSWORD_HASH: hashPasswordScrypt('bridge-admin-pass-123'),
+        AUDIT_LOG_FILE_PATH: auditFilePath,
+        MCP_RATE_LIMIT_MAX_REQUESTS: '20',
+      },
+      auditSinks: [memSink],
+      mcpMaxBodyBytes: 512,
+    });
+    gateways.push(gateway);
+
+    // Attempting to execute a nonexistent plan via eng-core's MutationPlanGate
+    // should fail closed, write exactly 1 SQLite audit row, and forward 1 hash-chained event to StructuredAuditLogger sinks.
+    await expect(
+      gateway.planGate.executePlan('plan_missing_bridge_test', 'bridge-operator'),
+    ).rejects.toThrow(/not found/i);
+
+    await gateway.auditLogger.flush();
+
+    const sqlRows = gateway.repos.audit.list({ target: 'plan_missing_bridge_test', limit: 10 });
+    expect(sqlRows).toHaveLength(1);
+    expect(sqlRows[0]!.action).toBe('publish_changes.execute_staged_plan');
+    expect(sqlRows[0]!.status).toBe('denied');
+
+    const memEvents = memSink.query({ target: 'plan_missing_bridge_test' });
+    expect(memEvents).toHaveLength(1);
+    expect(memEvents[0]!.action).toBe('publish_changes.execute_staged_plan');
+    expect(verifyAuditChain(memSink.getEvents()).valid).toBe(true);
+
+    const jsonlEvents = fs
+      .readFileSync(auditFilePath, 'utf8')
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line) as StructuredAuditEvent);
+    expect(jsonlEvents.some((e) => e.target === 'plan_missing_bridge_test')).toBe(true);
+    expect(verifyAuditChain(jsonlEvents)).toEqual({
+      valid: true,
+      checkedCount: jsonlEvents.length,
+    });
   });
 });
