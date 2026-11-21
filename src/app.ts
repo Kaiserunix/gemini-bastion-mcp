@@ -9,6 +9,7 @@ import { CodexSdkRunner, reconcileOrphanJobs } from './core/codexRunner.js';
 import { DownstreamMcpBridge } from './core/downstreamMcpBridge.js';
 import { GitHubService } from './core/githubService.js';
 import { rollbackToCheckpoint } from './core/gitSnapshot.js';
+import { createGitHubWebhookApp } from './core/watchdogService.js';
 import { sendWebhookNotification } from './core/webhookNotifier.js';
 import { cancelActiveJob, listActiveJobIds } from './core/workspaceExec.js';
 import { WorkspaceLockManager, workspaceLockManager } from './core/workspaceLock.js';
@@ -236,6 +237,19 @@ export function createGatewayApp(
   const bearerMiddleware = createBearerMiddleware({ config, repos });
   app.use('/mcp', bearerMiddleware);
   app.all('/mcp', createMcpHttpHandler(mcpDeps));
+
+  app.route(
+    '/webhooks/github',
+    createGitHubWebhookApp({
+      config,
+      repos,
+      scrubber,
+      agentRunner,
+      notifyWebhook,
+      rateLimitMaxAttempts: options.rateLimitMaxAttempts,
+      rateLimitWindowMs: options.rateLimitWindowMs,
+    }),
+  );
 
   app.onError((err, c) => {
     const safeMsg = scrubber.scrub(err instanceof Error ? err.message : String(err));

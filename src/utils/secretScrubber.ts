@@ -17,6 +17,7 @@ const EXPLICIT_SECRET_KEYS = [
   'GEMINI_API_KEY',
   'OPS_MCP_AUTH_TOKEN',
   'AGENT_RUNNER_AUTH_TOKEN',
+  'GITHUB_WEBHOOK_SECRET',
   'OAUTH_SIGNING_SECRET',
   'OAUTH_STATIC_CLIENT_SECRET',
   'GOOGLE_OAUTH_CLIENT_SECRET',
@@ -189,6 +190,7 @@ export class SecretScrubber implements ScrubberLike {
     this.addSecret(config.geminiApiKey);
     this.addSecret(config.agentRunnerAuthToken);
     this.addSecret(config.opsMcpAuthToken);
+    this.addSecret(config.githubWebhookSecret);
     this.addSecret(config.notifyWebhookUrl);
 
     if (Array.isArray(config.downstreamMcps)) {

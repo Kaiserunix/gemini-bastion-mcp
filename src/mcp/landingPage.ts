@@ -9,7 +9,7 @@ export interface PublicLandingPageInput {
 export interface PublicGatewayStatusJson {
   service: 'gemini-bastion-mcp';
   brand: 'GeminiBastionMCP';
-  version: '0.2.0';
+  version: '0.3.0';
   status: 'online' | 'degraded';
   dbReady: boolean;
   mcpEndpoint: string;
@@ -94,7 +94,7 @@ export function buildPublicGatewayStatusJson(
   return {
     service: 'gemini-bastion-mcp',
     brand: 'GeminiBastionMCP',
-    version: '0.2.0',
+    version: '0.3.0',
     status: input.dbReady ? 'online' : 'degraded',
     dbReady: input.dbReady,
     mcpEndpoint: `${base}/mcp`,
@@ -125,7 +125,7 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GeminiBastionMCP v0.2.0 — Remote MCP Bastion for Web Gemini, Claude &amp; ChatGPT</title>
+  <title>GeminiBastionMCP v0.3.0 — Remote MCP Bastion for Web Gemini, Claude &amp; ChatGPT</title>
   <style>
     :root {
       --bg: #0b1020;
@@ -269,7 +269,7 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
       <div class="brand-row">
         <span class="pill"><span class="dot"></span>${statusLabel}</span>
         <span>GeminiBastionMCP</span>
-        <span class="mono">v0.2.0</span>
+        <span class="mono">v0.3.0</span>
       </div>
       <a class="btn btn-ghost" href="/admin">Operator /admin &rarr;</a>
     </header>
@@ -329,6 +329,9 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
         <span class="badge">Drivers: Codex SDK / Claude Code / Gemini CLI / OpenCode</span>
         <span class="badge">Isolation: bwrap FS &amp; --unshare-net Jail</span>
         <span class="badge">Federation: Authenticated MCP-2 Proxy</span>
+        <span class="badge">Persistent Memory: Cross-Session Recall</span>
+        <span class="badge">MCP Prompts: 4 Guided Workflows</span>
+        <span class="badge">Watchdog: Read-Only CI Triage</span>
       </div>
     </section>
 

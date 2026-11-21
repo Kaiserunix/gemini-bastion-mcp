@@ -20,7 +20,7 @@ env:
   NODE_IMAGE: node:22.23.4-bookworm-slim
 
 jobs:
-  publish:
+  publish-gateway:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -104,3 +104,30 @@ jobs:
             NODE_IMAGE=${{ env.NODE_IMAGE }}
           cache-from: type=gha,scope=ops
           cache-to: type=gha,mode=max,scope=ops
+
+  publish-mcp-registry:
+    needs: [publish-gateway]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install mcp-publisher CLI
+        run: |
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${os}_${arch}.tar.gz" \
+            | tar -xz mcp-publisher
+          chmod +x ./mcp-publisher
+
+      - name: Validate server.json against MCP Registry
+        run: ./mcp-publisher validate server.json
+
+      - name: Authenticate via GitHub OIDC and publish to Official MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish server.json

@@ -158,6 +158,28 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    name: 'workspace_memories',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS workspace_memories (
+          memory_id TEXT PRIMARY KEY,
+          workspace_slug TEXT NOT NULL,
+          category TEXT NOT NULL,
+          key TEXT NOT NULL,
+          content TEXT NOT NULL,
+          pinned INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          UNIQUE(workspace_slug, category, key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_workspace_memories_lookup
+          ON workspace_memories (workspace_slug, pinned DESC, updated_at DESC);
+      `);
+    },
+  },
 ];
 
 /**

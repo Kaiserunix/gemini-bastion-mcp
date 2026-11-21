@@ -302,6 +302,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
         allow_network: z.boolean().optional(),
         max_duration_sec: z.number().int().min(10).max(3600).optional(),
         token_budget: z.number().int().min(1000).max(10000000).optional(),
+        include_memory: z.boolean().optional().default(true),
       },
       annotations: {
         readOnlyHint: false,
@@ -356,6 +357,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
           deps.config.codexTokenBudget,
         );
 
+        let memoryInjected = false;
         if (effectiveRunnerType === 'shell_task') {
           launchBackgroundShellTask(deps, {
             jobId,
@@ -370,12 +372,21 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
             effectiveRunnerType === 'codex_write' || effectiveRunnerType === 'agent_write'
               ? 'write'
               : 'readonly';
+          const memoryContext =
+            args.include_memory !== false
+              ? deps.repos.memories.formatRecallContext(slug, 1800)
+              : '';
+          memoryInjected = memoryContext.length > 0;
+          const effectiveObjective = memoryInjected
+            ? `[Workspace Persistent Memory]\n${memoryContext}\n[/Workspace Persistent Memory]\n\n${args.objective}`
+            : args.objective;
+
           const runOptions = {
             jobId,
             workspaceSlug: slug,
             workspaceDir: realWorkspaceRoot,
             mode: runMode as 'readonly' | 'write',
-            objective: args.objective,
+            objective: effectiveObjective,
             driver: effectiveDriver,
             resumeThreadId: args.resume_thread_id,
             model: args.model,
@@ -400,6 +411,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
           `Dispatched ${effectiveRunnerType}${effectiveRunnerType === 'shell_task' ? '' : ` (driver=${effectiveDriver})`} job on workspace "${slug}".`,
           `job_id: ${jobId}`,
           `status: queued`,
+          ...(memoryInjected ? ['memory_context: injected'] : []),
           `Poll with job_status(job_id="${jobId}").`,
         ].join('\n');
       },

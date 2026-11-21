@@ -11,7 +11,7 @@
 [![CI](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml)
 [![Docker Publish](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/docker-publish.yml)
 [![Deploy GitHub Pages](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/pages.yml/badge.svg)](https://kaiserunix.github.io/gemini-bastion-mcp/)
-[![Release v0.2.0](https://img.shields.io/badge/Release-v0.2.0-6366f1?style=flat-square)](CHANGELOG.md)
+[![Release v0.3.0](https://img.shields.io/badge/Release-v0.3.0-6366f1?style=flat-square)](CHANGELOG.md)
 [![GHCR lite | full](https://img.shields.io/badge/GHCR-lite%20(~350MB)%20%7C%20full-0ea5e9?style=flat-square)](https://github.com/Kaiserunix/gemini-bastion-mcp/pkgs/container/gemini-bastion-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.kaiserunix%2Fgemini--bastion--mcp-8b5cf6?style=flat-square)](server.json)
 [![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
@@ -22,7 +22,7 @@
 
 **[English](README.md) | 简体中文**
 
-[项目主页 (Live Showcase)](https://kaiserunix.github.io/gemini-bastion-mcp/) · [为什么做这个项目](#为什么做这个项目why-this-exists) · [整体架构](#整体架构图) · [10 大工具](#10-大工具1-道审批闸门) · [多引擎驱动](#可插拔多智能体驱动multi-agent-drivers) · [1 分钟上手](#1-分钟快速上手ghcr-零编译拉取) · [安全防线 v2](#安全架构-v2六层纵深防御) · [MCP Registry](#官方-mcp-registry-与-ghcr-镜像)
+[项目主页 (Live Showcase)](https://kaiserunix.github.io/gemini-bastion-mcp/) · [为什么做这个项目](#为什么做这个项目why-this-exists) · [整体架构](#整体架构图) · [10 大工具与持久化记忆](#10-大工具1-道审批闸门) · [Gem 提示词与 MCP Prompts](#gemini-gem-提示词跨会话记忆与-mcp-prompts) · [只读 CI Watchdog](#可选只读-github-ci-watchdog) · [1 分钟上手](#1-分钟快速上手ghcr-零编译拉取) · [安全防线 v2](#安全架构-v2六层纵深防御) · [MCP Registry](#官方-mcp-registry-与-ghcr-镜像)
 
 </div>
 
@@ -41,7 +41,7 @@
 
 大多数远程 MCP Server 都面临两难：要么暴露三四十个零碎工具，导致网页端每读一个文件、跑一次测试就弹一次授权确认框；要么直接在宿主机裸跑 Shell，毫无密钥隔离与回滚保护。
 
-| 能力维度 | **GeminiBastionMCP (`v0.2.0`)** | 通用聚合网关 (如 MetaMCP) | 官方远程 MCP (GitHub / CF) | 本地 Shell / Stdio MCP |
+| 能力维度 | **GeminiBastionMCP (`v0.3.0`)** | 通用聚合网关 (如 MetaMCP) | 官方远程 MCP (GitHub / CF) | 本地 Shell / Stdio MCP |
 | :--- | :--- | :--- | :--- | :--- |
 | **Web Gemini / Claude.ai / ChatGPT OAuth 2.1 DCR** | **完整支持** (PKCE `S256`、DCR 支持 16 个 Redirect URIs、8KB `state`、RFC 8707/9728) | 多数缺少 RFC 9728/8707 或大 `state` 支持 | 仅限单一官方平台 | 仅限本地桌面客户端 |
 | **Web 与移动端授权弹窗体验** | **10 工具收敛 + 唯一审批闸门** (Tier 1/2 可设始终允许，仅 `publish_changes` 需确认) | 几十个底层工具导致确认弹窗点到手软 | 读写工具混杂 | 每次执行命令均需确认或全裸奔 |
@@ -108,11 +108,11 @@ flowchart LR
 
 | # | 工具名 | 核心动作与行为 |
 |---|--------|----------------|
-| 1 | `workspace_manage` | `list`、`sync_github`、`init_cf_ops`、`list_checkpoints`、`rollback`（自动识别技术栈与 `AGENTS.md` / `CLAUDE.md`） |
+| 1 | `workspace_manage` | `list`、`sync_github`、`init_cf_ops`、`list_checkpoints`、`rollback`、**`memory_list`**、**`memory_upsert`**、**`memory_delete`**（自动召回持久化记忆 + 识别技术栈与 `AGENTS.md` / `CLAUDE.md`） |
 | 2 | `code_explore` | `pack` (repomix)、`search` (ripgrep)、`ast` (ast-grep)、`read_lines`、`read_artifact`、`git_diff` |
 | 3 | `code_patch` | 原子化多文件 `patch`（支持 `hunks` + `line_hint`）、`create_or_overwrite`、`delete_file`，自带自动检查点与 L0/L1/L2 校验回滚 |
 | 4 | `workspace_exec` | 在单工作区 `bwrap` 沙盒内执行命令（默认 `--unshare-net` 断网；可选 `allow_network: true`；`wait_ms` 最长 `15000`；超时自动转后台 SQLite `job_id`） |
-| 5 | `dispatch_runner` | 派发后台 `codex_readonly` / `codex_write` / `agent_readonly` / `agent_write` / `shell_task`，支持切换 `agent_driver`（`codex`、`claude_code`、`gemini_cli`、`opencode`）、线程续接、预算上限及自动检查点 |
+| 5 | `dispatch_runner` | 基于 `@openai/codex-sdk` 或 CLI 驱动（`codex`、`claude_code`、`gemini_cli`、`opencode`）派发后台 `codex_readonly` / `codex_write` / `agent_readonly` / `agent_write` / `shell_task`，支持 **`include_memory`** 自动注入工作区记忆、线程续接、预算上限及自动检查点 |
 | 6 | `job_status` | 查询任务状态、流式事件、Token 消耗、`thread_id`、`git status -sb`、最终报告，或通过 `cancel: true` 实时中止 |
 | 7 | `github_inspect` | 只读查看 PR Diff/文件、Issue 评论与失败的 Actions 日志（带防 Prompt 注入的不可信数据边界包装） |
 | 8 | `infra_inspect` | 只读巡检 Cloudflare（`zones`、`dns_records`、`workers`、`pages`、`kv_namespaces`、`d1_databases`、`waf_rules`、`worker_tail_logs`）及下游 MCP-2 `readonlyTools` |
@@ -219,6 +219,8 @@ flowchart LR
 | `CLOUDFLARE_ACCOUNT_ID` / `_READONLY_API_TOKEN` / `_API_TOKEN` | Cloudflare 账号与只读/写入分离 Token |
 | `OPENAI_API_KEY` / `CODEX_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | 各智能体驱动对应的模型 API 密钥 |
 | `NOTIFY_WEBHOOK_URL` | 可选 Webhook 通知 URL（推送经脱敏的任务与变更状态） |
+| `WATCHDOG_ENABLED` / `GITHUB_WEBHOOK_SECRET` | 可选只读 GitHub CI Watchdog（`POST /webhooks/github`，Fail-Closed HMAC-SHA256 验签） |
+| `WATCHDOG_ALLOWED_REPOS` / `WATCHDOG_AGENT_DRIVER` | 逗号分隔的 `owner/repo` 白名单与可选只读诊断驱动覆盖 |
 | `DOWNSTREAM_MCPS_FILE` / `_JSON` | 可选下游 MCP-2 联邦配置 |
 
 </details>
@@ -336,10 +338,31 @@ npm run dev
 
 ---
 
+## Gemini Gem 提示词、跨会话记忆与 MCP Prompts
+
+- **开箱即用 Gem / Claude Project 系统提示词**：创建专用 **Gemini Gem** (`gemini.google.com/gems`)、**Claude Project** 或 **ChatGPT Custom GPT** 时，直接粘贴 [`docs/GEMINI_GEM_PROMPT.md`](docs/GEMINI_GEM_PROMPT.md)（提供中英文双语版本），即可让模型自动遵循 10 大工具最佳实践 SOP。
+- **MCP `instructions` 与 4 个内置 Prompts**：`McpServer` 在 `initialize` 阶段自动下发 `instructions`，并注册 4 个官方 MCP Prompts（`review_pr`、`fix_issue`、`resume_workspace_task`、`ops_health_check`）。
+- **跨会话持久化工作区记忆 (`workspace_memories`)**：
+  - 通过 `workspace_manage`（`memory_list`、`memory_upsert`、`memory_delete`）持久化 `task_state`、`decision`、`pitfall`、`preference`、`note`（单工作区最多 100 条 / 单条 8KB，写入前自动扫描敏感密钥）。
+  - `workspace_manage`（`list`、`sync_github`、`init_cf_ops`）会自动召回置顶与近期记忆；`dispatch_runner`（`include_memory: true`）会将 `[Workspace Persistent Memory]` 注入后台智能体；`/admin` 新增 **Memory** 标签页支持随时查看与删除。
+
+---
+
+## 可选只读 GitHub CI Watchdog
+
+在 `.env` 中配置 `WATCHDOG_ENABLED=true`、`GITHUB_WEBHOOK_SECRET`（`>= 24` 字符）与 `WATCHDOG_ALLOWED_REPOS=owner/repo`，并将 GitHub `workflow_run` Webhook 指向 `https://<PUBLIC_DOMAIN>/webhooks/github`：
+
+1. 请求经过 IP 限流、64KB 请求体上限（`413`）、HMAC-SHA256 验签（`X-Hub-Signature-256` 校验失败返回 `401`）以及 `WATCHDOG_ALLOWED_REPOS` 白名单校验（未命中返回 `403`）。
+2. 当工作流失败（`action: "completed"`、`conclusion: "failure"`）时，Watchdog 仅触发**严格只读（`mode: "readonly"`）**诊断任务，写入置顶的 `ci-failure-<runId>` `task_state` 记忆，并通过 `NOTIFY_WEBHOOK_URL` 发送脱敏提醒，方便你随时打开 Web Gemini 接管修复。
+3. **100% 平台合规**：绝不修改仓库代码、绝不调用 `publish_changes`、绝不自动化或抓取任何消费级网页 UI。
+
+---
+
 ## 官方 MCP Registry 与 GHCR 镜像
 
-- **官方 MCP Registry 清单**：[`server.json`](server.json)（`io.github.kaiserunix/gemini-bastion-mcp`，schema `2025-12-11`）
-- **GHCR 预构建镜像**（由 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) 自动发布）：
+- **官方 MCP Registry 清单**：[`server.json`](server.json)（`io.github.kaiserunix/gemini-bastion-mcp`，schema `2025-12-11`，已通过 `mcp-publisher` 实测校验）。
+- **基于 `github-oidc` 的全自动发布**：推送 `v*` 标签将触发 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) 先完成 GHCR 镜像推送，再自动执行 `publish-mcp-registry` 任务（`mcp-publisher validate` -> `mcp-publisher login github-oidc` -> `mcp-publisher publish server.json`）。
+- **GHCR 预构建镜像**：
   - `ghcr.io/kaiserunix/gemini-bastion-mcp:lite` / `:latest` / `:<version>-lite`（约 350MB 轻量版：`bwrap` + `git` + `ripgrep`）
   - `ghcr.io/kaiserunix/gemini-bastion-mcp:full` / `:<version>-full`（完整工具链版：新增 Python 3.12 + `uv`、`mise`、`ruff`、`pyright`、`biome`、`ast-grep`、`repomix`、`shellcheck`、`hadolint`、`actionlint`、`gitleaks`、`gh`、`wrangler`）
   - `ghcr.io/kaiserunix/gemini-bastion-mcp-ops:latest` / `:<version>`（Bearer 鉴权 `ops-mcp` Sidecar）

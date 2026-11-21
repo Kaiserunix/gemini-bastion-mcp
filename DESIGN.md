@@ -94,10 +94,11 @@ SQLite operates in WAL mode (`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = O
 4. `oauth_tokens (token_hash PK, token_type, client_id, scope, resource, token_family_id, expires_at, grace_expires_at, revoked, created_at)`
 5. `oauth_upstream_states (state PK, provider, purpose, auth_req_id, code_verifier, binding_hash, expires_at, used, created_at)`
 6. `workspaces (slug PK, repo_url, default_branch, detected_stack_json, playbook_text, last_synced_at)`
-7. `checkpoints (checkpoint_id PK, workspace_slug, git_commit_sha, git_ref, reason, created_at)`
-8. `jobs (job_id PK, workspace_slug, runner_type, status, command_or_objective, codex_thread_id, checkpoint_id, events_json, token_usage_json, final_report_text, error_message, created_at, updated_at)`
-9. `mutation_plans (plan_id PK, target_service, summary_diff_text, payload_json, rollback_payload_json, status, expires_at, created_at, executed_at)`
-10. `audit_logs (id PK AUTOINCREMENT, actor, action, target, status, details_json, created_at)`
+7. `workspace_memories (memory_id PK, workspace_slug, category, key, content, pinned, created_at, updated_at, UNIQUE(workspace_slug, category, key))`
+8. `checkpoints (checkpoint_id PK, workspace_slug, git_commit_sha, git_ref, reason, created_at)`
+9. `jobs (job_id PK, workspace_slug, runner_type, status, command_or_objective, codex_thread_id, checkpoint_id, events_json, token_usage_json, final_report_text, error_message, created_at, updated_at)`
+10. `mutation_plans (plan_id PK, target_service, summary_diff_text, payload_json, rollback_payload_json, status, expires_at, created_at, executed_at)`
+11. `audit_logs (id PK AUTOINCREMENT, actor, action, target, status, details_json, created_at)`
 
 ---
 
@@ -132,11 +133,14 @@ All 10 tools register explicit MCP annotations (`readOnlyHint`, `destructiveHint
 ### 1. `workspace_manage`
 - **Annotations**: `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`
 - **Actions**:
-  - `list`: List registered workspaces, default branches, detected stacks, and last sync timestamps.
-  - `sync_github`: Clone or fast-forward/sync a GitHub repository (`owner/repo` or URL) into `/workspaces/{slug}`, detect stack (Node/Python/Go/Rust/Docker/Wrangler), and ingest repo playbooks (`AGENTS.md`, `CLAUDE.md`).
+  - `list`: List registered workspaces, default branches, detected stacks, and last sync timestamps (plus recalled memory counts).
+  - `sync_github`: Clone or fast-forward/sync a GitHub repository (`owner/repo` or URL) into `/workspaces/{slug}`, detect stack (Node/Python/Go/Rust/Docker/Wrangler), ingest repo playbooks (`AGENTS.md`, `CLAUDE.md`), and inject recalled `workspace_memories` (`pinned` + `task_state`).
   - `init_cf_ops`: Inspect/scaffold Cloudflare Worker/Pages operational context and `wrangler` metadata for a workspace.
   - `list_checkpoints`: List git checkpoints recorded for `{slug}`.
   - `rollback`: Restore workspace working tree to a target `checkpoint_id` (creating a safety checkpoint first).
+  - `memory_upsert` / `memory_list` / `memory_delete` (`v0.3.0`): Persist, query, and delete cross-session workspace memories (`task_state`, `decision`, `pitfall`, `preference`, `note`, max 100 per workspace / 8KB content) in SQLite `workspace_memories`.
+
+> **MCP `instructions` & Prompts (`v0.3.0`)**: `McpServer` also registers server-level `instructions` (teaching the 10-tool SOP) and built-in MCP Prompts (session resume, PR review, incident diagnosis, safe refactor) so Web Gemini, Claude.ai, and ChatGPT clients automatically orient themselves across sessions.
 
 ### 2. `code_explore`
 - **Annotations**: `readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: false`
@@ -236,4 +240,12 @@ Configured via `DOWNSTREAM_MCPS_JSON` or `DOWNSTREAM_MCPS_FILE`:
   - OAuth DCR clients & active token families with one-click revocation
   - Audit log viewer
 - **Webhook Notifications (`NOTIFY_WEBHOOK_URL`)**:
-  - Fires scrubbed JSON POST events on async job completion/failure/timeout and `publish_changes` executions.
+  - Fires scrubbed JSON POST events on async job completion/failure/timeout, `publish_changes` executions, and Watchdog diagnosis completions.
+
+---
+
+## 10. Read-Only GitHub CI Watchdog (`v0.3.0`)
+
+Configured via `WATCHDOG_ENABLED=true`, `GITHUB_WEBHOOK_SECRET`, `WATCHDOG_ALLOWED_REPOS`, and optional `WATCHDOG_AGENT_DRIVER`:
+- **`POST /webhooks/github`**: Verifies `X-Hub-Signature-256` HMAC-SHA256 using `crypto.timingSafeEqual` and fails closed in production if `GITHUB_WEBHOOK_SECRET` (<24 chars) or `WATCHDOG_ALLOWED_REPOS` is missing.
+- **Strictly Read-Only Diagnostics**: On failed `workflow_run` / `check_suite` events for allowlisted repositories, syncs/inspects logs and triggers a read-only diagnosis (`agent_readonly` / `codex_readonly`) without modifying code or pushing commits, notifying the operator via `NOTIFY_WEBHOOK_URL` so they can resume fixing interactively in Web Gemini, Claude.ai, or ChatGPT.

@@ -4,6 +4,22 @@ All notable changes to **GeminiBastionMCP** (`gemini-bastion-mcp`) are documente
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-21
+
+### Added
+- **Cross-Session Persistent Workspace Memory (`workspace_memories`)**:
+  - Added SQLite migration v3 (`workspace_memories`) and `MemoryRepository` (`task_state`, `decision`, `pitfall`, `preference`, `note`; up to 100 entries / 8KB per entry).
+  - Extended `workspace_manage` with `memory_list`, `memory_upsert` (scans for secrets before persisting), and `memory_delete`, plus automatic memory recall in `list`, `sync_github`, and `init_cf_ops`.
+  - Added `include_memory` (default `true`) on `dispatch_runner` to inject `[Workspace Persistent Memory]` context into background coding agents, and added a **Memory** tab (`GET /admin/api/memories`, `DELETE /admin/api/memories/:id`) to `/admin`.
+- **MCP `instructions` & 4 Built-In MCP Prompts**:
+  - Added `MCP_SERVER_INSTRUCTIONS` to `McpServer` initialization and registered `review_pr`, `fix_issue`, `resume_workspace_task`, and `ops_health_check` prompts while preserving the 10-tool contract.
+- **Optional Read-Only GitHub CI Watchdog (`POST /webhooks/github`)**:
+  - Added HMAC-SHA256 verified (`GITHUB_WEBHOOK_SECRET`), repo-allowlisted (`WATCHDOG_ALLOWED_REPOS`), fail-closed `workflow_run` failure diagnostics dispatching strictly `mode: "readonly"` agent runs, saving `ci-failure-<runId>` `task_state` memory, and notifying via `NOTIFY_WEBHOOK_URL`.
+- **Gemini Gem / Claude Project System Prompt (`docs/GEMINI_GEM_PROMPT.md`)**:
+  - Added ready-to-paste bilingual SOP system prompts and setup guide (`docs/GEMINI_GEM_PROMPT.md` + `site/index.html`).
+- **Automated Official MCP Registry Publishing (`github-oidc`)**:
+  - Fixed `server.json` description length (`<= 100` chars, validated via `mcp-publisher 1.8.10`) and added `publish-mcp-registry` OIDC job in `.github/workflows/docker-publish.yml` triggered on `v*` tags after GHCR push.
+
 ## [0.2.0] - 2026-11-21
 
 ### Added

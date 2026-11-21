@@ -695,7 +695,7 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(landingHtmlRes.headers.get('content-security-policy')).toContain("script-src 'sha256-");
     const landingHtml = await landingHtmlRes.text();
     expect(landingHtml).toContain('GeminiBastionMCP');
-    expect(landingHtml).toContain('v0.2.0');
+    expect(landingHtml).toContain('v0.3.0');
     expect(landingHtml).toContain('Claude.ai');
     expect(landingHtml).toContain('ChatGPT');
     expect(landingHtml).toContain('bwrap');
@@ -714,7 +714,7 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(landingJson).toMatchObject({
       service: 'gemini-bastion-mcp',
       brand: 'GeminiBastionMCP',
-      version: '0.2.0',
+      version: '0.3.0',
       status: 'online',
       dbReady: true,
       mcpEndpoint: 'https://mcp.example.com/mcp',

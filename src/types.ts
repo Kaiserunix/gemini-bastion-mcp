@@ -74,6 +74,11 @@ export interface GatewayConfig {
   agentRunnerUrl?: string;
   agentRunnerAuthToken?: string;
   opsMcpAuthToken?: string;
+
+  watchdogEnabled: boolean;
+  githubWebhookSecret?: string;
+  watchdogAllowedRepos: string[];
+  watchdogAgentDriver?: AgentDriverName;
 }
 
 // ============================================================================
@@ -168,6 +173,19 @@ export interface WorkspaceRecord {
   detected_stack: DetectedStack;
   playbook_text: string | null;
   last_synced_at: number | null;
+}
+
+export type MemoryCategory = 'task_state' | 'decision' | 'pitfall' | 'preference' | 'note';
+
+export interface WorkspaceMemoryRecord {
+  memory_id: string;
+  workspace_slug: string;
+  category: MemoryCategory;
+  key: string;
+  content: string;
+  pinned: boolean;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface CheckpointRecord {

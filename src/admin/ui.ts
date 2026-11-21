@@ -13,6 +13,7 @@ export interface AdminKpiSummary {
   workspaces: number;
   latestSyncAt: number | null;
   oauthSessions: number;
+  memoriesCount: number;
 }
 
 export function renderAdminManifest(): Record<string, unknown> {
@@ -157,6 +158,7 @@ export function renderAdminDashboardHtml(params: {
     workspaces: 0,
     latestSyncAt: null,
     oauthSessions: 0,
+    memoriesCount: 0,
   };
   const mcpEndpoint = `${publicDomain.replace(/\/+$/, '')}/mcp`;
 
@@ -261,6 +263,7 @@ export function renderAdminDashboardHtml(params: {
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="jobs">Jobs (Live)</button>
     <button class="tab" data-tab="workspaces">Workspaces</button>
+    <button class="tab" data-tab="memory">Memory (<span id="tabMemoriesCount">${kpis.memoriesCount}</span>)</button>
     <button class="tab" data-tab="oauth">OAuth</button>
     <button class="tab" data-tab="plans">Mutation Plans</button>
     <button class="tab" data-tab="audit">Audit Logs</button>
@@ -269,6 +272,7 @@ export function renderAdminDashboardHtml(params: {
   <main>
     <section id="tab-jobs" class="panel active"><div id="jobsList" class="empty">Connecting live stream...</div></section>
     <section id="tab-workspaces" class="panel"><div id="workspacesList" class="empty">Loading workspaces...</div></section>
+    <section id="tab-memory" class="panel"><div id="memoryList" class="empty">Loading workspace memories...</div></section>
     <section id="tab-oauth" class="panel"><div id="oauthList" class="empty">Loading OAuth state...</div></section>
     <section id="tab-plans" class="panel"><div id="plansList" class="empty">Loading mutation plans...</div></section>
     <section id="tab-audit" class="panel"><div id="auditList" class="empty">Loading audit logs...</div></section>
@@ -306,6 +310,10 @@ export function renderAdminDashboardHtml(params: {
       }
       if (typeof summary.oauthSessions === 'number') {
         document.getElementById('kpiOauthSessions').textContent = String(summary.oauthSessions);
+      }
+      if (typeof summary.memoriesCount === 'number') {
+        const memBadge = document.getElementById('tabMemoriesCount');
+        if (memBadge) memBadge.textContent = String(summary.memoriesCount);
       }
     }
 
@@ -482,8 +490,31 @@ export function renderAdminDashboardHtml(params: {
       else if (action === 'rollback-ws') rollbackWs(btn.getAttribute('data-slug'), btn);
       else if (action === 'delete-client') deleteClient(btn.getAttribute('data-id'));
       else if (action === 'revoke-token') revokeToken(btn.getAttribute('data-hash'));
+      else if (action === 'delete-memory') deleteMemory(btn.getAttribute('data-id'));
       else if (action === 'toggle-log') toggleJobLog(btn.getAttribute('data-id'), btn);
     });
+
+    async function loadMemories() {
+      const data = await apiFetch('/admin/api/memories');
+      if (!data) return;
+      const el = document.getElementById('memoryList');
+      if (!data.memories || !data.memories.length) { el.innerHTML = '<div class="empty">No persisted workspace memories.</div>'; refreshSummary(); return; }
+      el.innerHTML = data.memories.map((m) => '<div class="card"><div class="row"><div><div class="title">' + esc(m.workspace_slug) + ' · ' + esc(m.key) + '</div>'
+        + '<div class="meta">' + esc(m.memory_id) + ' · Updated: ' + esc(fmtTime(m.updated_at)) + '</div></div>'
+        + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+        + '<span class="pill running">' + esc(m.category) + '</span>'
+        + (m.pinned ? '<span class="pill completed">PINNED</span>' : '')
+        + '<button class="btn btn-danger" type="button" data-action="delete-memory" data-id="' + esc(m.memory_id) + '">Delete</button>'
+        + '</div></div><pre>' + esc(m.content) + '</pre></div>').join('');
+      refreshSummary();
+    }
+
+    async function deleteMemory(id) {
+      if (!id) return;
+      if (typeof window.confirm === 'function' && !window.confirm('Delete workspace memory ' + id + '?')) return;
+      await apiFetch('/admin/api/memories/' + encodeURIComponent(id), { method: 'DELETE' });
+      loadMemories();
+    }
 
     async function loadPlans() {
       const data = await apiFetch('/admin/api/plans');
@@ -508,6 +539,7 @@ export function renderAdminDashboardHtml(params: {
 
     function refreshTab(tab) {
       if (tab === 'workspaces') loadWorkspaces();
+      else if (tab === 'memory') loadMemories();
       else if (tab === 'oauth') loadOAuth();
       else if (tab === 'plans') loadPlans();
       else if (tab === 'audit') loadAudit();

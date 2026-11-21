@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.kaiserunix/gemini-bastion-mcp",
   "title": "GeminiBastionMCP — Remote MCP Bastion for Web Gemini, Claude & ChatGPT",
-  "description": "Self-hosted OAuth 2.1 Streamable HTTP MCP bastion for Web Gemini, Claude.ai & ChatGPT with 10 tools, 1 approval gate, bwrap isolation, multi-agent runners & Cloudflare ops.",
-  "version": "0.2.0",
+  "description": "OAuth 2.1 MCP bastion for Web Gemini, Claude & ChatGPT: 10 tools, 1 gate, bwrap & multi-agent.",
+  "version": "0.3.0",
   "repository": {
     "url": "https://github.com/Kaiserunix/gemini-bastion-mcp",
     "source": "github"
@@ -11,7 +11,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/kaiserunix/gemini-bastion-mcp:0.2.0-lite",
+      "identifier": "ghcr.io/kaiserunix/gemini-bastion-mcp:0.3.0-lite",
       "runtimeHint": "docker",
       "transport": {
         "type": "streamable-http",
@@ -58,7 +58,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/kaiserunix/gemini-bastion-mcp:0.2.0-full",
+      "identifier": "ghcr.io/kaiserunix/gemini-bastion-mcp:0.3.0-full",
       "runtimeHint": "docker",
       "transport": {
         "type": "streamable-http",

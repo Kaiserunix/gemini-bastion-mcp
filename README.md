@@ -11,7 +11,7 @@
 [![CI](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/ci.yml)
 [![Docker Publish](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/docker-publish.yml)
 [![Deploy GitHub Pages](https://github.com/Kaiserunix/gemini-bastion-mcp/actions/workflows/pages.yml/badge.svg)](https://kaiserunix.github.io/gemini-bastion-mcp/)
-[![Release v0.2.0](https://img.shields.io/badge/Release-v0.2.0-6366f1?style=flat-square)](CHANGELOG.md)
+[![Release v0.3.0](https://img.shields.io/badge/Release-v0.3.0-6366f1?style=flat-square)](CHANGELOG.md)
 [![GHCR lite | full](https://img.shields.io/badge/GHCR-lite%20(~350MB)%20%7C%20full-0ea5e9?style=flat-square)](https://github.com/Kaiserunix/gemini-bastion-mcp/pkgs/container/gemini-bastion-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.kaiserunix%2Fgemini--bastion--mcp-8b5cf6?style=flat-square)](server.json)
 [![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
@@ -22,7 +22,7 @@
 
 **English | [简体中文](README.zh-CN.md)**
 
-[Live Showcase](https://kaiserunix.github.io/gemini-bastion-mcp/) · [Why This Exists](#why-this-exists) · [Architecture](#architecture-overview) · [10 Tools](#10-tools-1-approval-gate) · [Multi-Agent Drivers](#pluggable-multi-agent-drivers) · [Quick Start](#1-minute-quick-start-ghcr-zero-build) · [Security v2](#security-architecture-v2-6-layer-defense-in-depth) · [MCP Registry](#official-mcp-registry--ghcr-images)
+[Live Showcase](https://kaiserunix.github.io/gemini-bastion-mcp/) · [Why This Exists](#why-this-exists) · [Architecture](#architecture-overview) · [10 Tools & Memory](#10-tools-1-approval-gate) · [Gem Prompt & MCP Prompts](#gemini-gem-prompt--mcp-prompts) · [CI Watchdog](#optional-read-only-github-ci-watchdog) · [Quick Start](#1-minute-quick-start-ghcr-zero-build) · [Security v2](#security-architecture-v2-6-layer-defense-in-depth) · [MCP Registry](#official-mcp-registry--ghcr-images)
 
 </div>
 
@@ -41,7 +41,7 @@
 
 Most Remote MCP Servers force an unpleasant tradeoff: either expose dozens of fine-grained tools (triggering endless confirmation popups on every file read or test run) or run an unguarded shell directly on your host.
 
-| Capability | **GeminiBastionMCP (`v0.2.0`)** | Generic Proxies (e.g. MetaMCP) | Official Remote MCPs (GitHub / CF) | Local Shell / Stdio MCP |
+| Capability | **GeminiBastionMCP (`v0.3.0`)** | Generic Proxies (e.g. MetaMCP) | Official Remote MCPs (GitHub / CF) | Local Shell / Stdio MCP |
 | :--- | :--- | :--- | :--- | :--- |
 | **Web Gemini, Claude.ai & ChatGPT OAuth 2.1 DCR** | **Full Support** (PKCE `S256`, DCR up to 16 redirect URIs, 8KB `state`, RFC 8707/9728) | Often missing RFC 9728/8707 or large `state` support | Single-vendor hosted only | Desktop/local client only |
 | **Web & Mobile Approval UX** | **10 Tools, 1 Approval Gate** (Tier 1/2 `Always Allow`, only `publish_changes` asks) | Dozens of fragmented tools = constant confirmation popups | Read & write tools mixed | Confirm every shell command or run wide open |
@@ -108,11 +108,11 @@ Instead of exposing 40+ granular tools that bury mobile/web users under approval
 
 | # | Tool | Actions & Behavior |
 |---|------|--------------------|
-| 1 | `workspace_manage` | `list`, `sync_github`, `init_cf_ops`, `list_checkpoints`, `rollback` (auto-detects stack & `AGENTS.md` / `CLAUDE.md`) |
+| 1 | `workspace_manage` | `list`, `sync_github`, `init_cf_ops`, `list_checkpoints`, `rollback`, **`memory_list`**, **`memory_upsert`**, **`memory_delete`** (auto-recalls persistent workspace memory + detects stack & `AGENTS.md` / `CLAUDE.md`) |
 | 2 | `code_explore` | `pack` (repomix), `search` (ripgrep), `ast` (ast-grep), `read_lines`, `read_artifact`, `git_diff` |
 | 3 | `code_patch` | Atomic multi-file `patch` (`hunks` + `line_hint`), `create_or_overwrite`, `delete_file` with auto-checkpoint + L0/L1/L2 validation |
 | 4 | `workspace_exec` | Sandboxed shell inside per-workspace `bwrap` jail (`--unshare-net` default; opt-in `allow_network: true`; `wait_ms` up to `15000`; auto-promotes to background SQLite `job_id`) |
-| 5 | `dispatch_runner` | Background `codex_readonly` / `codex_write` / `agent_readonly` / `agent_write` / `shell_task` with pluggable `agent_driver` (`codex`, `claude_code`, `gemini_cli`, `opencode`), thread resume, budgets, and auto-checkpoint |
+| 5 | `dispatch_runner` | Background `codex_readonly` / `codex_write` / `agent_readonly` / `agent_write` / `shell_task` with pluggable `agent_driver` (`codex`, `claude_code`, `gemini_cli`, `opencode`), **`include_memory`** (auto-injects workspace memory), thread resume, budgets, and auto-checkpoint |
 | 6 | `job_status` | Poll job status, streamed events, token usage, `thread_id`, `git status -sb`, final report, or `cancel: true` |
 | 7 | `github_inspect` | Read-only PR diffs/files, issue threads, and failed Actions logs (wrapped with untrusted-data boundary markers) |
 | 8 | `infra_inspect` | Read-only Cloudflare inspection (`zones`, `dns_records`, `workers`, `pages`, `kv_namespaces`, `d1_databases`, `waf_rules`, `worker_tail_logs`) + downstream MCP-2 `readonlyTools` |
@@ -219,6 +219,8 @@ Set a default driver via `DEFAULT_AGENT_DRIVER` in `.env` or select one per job 
 | `CLOUDFLARE_ACCOUNT_ID` / `_READONLY_API_TOKEN` / `_API_TOKEN` | Cloudflare account + split read-only vs write tokens |
 | `OPENAI_API_KEY` / `CODEX_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | Agent driver API credentials |
 | `NOTIFY_WEBHOOK_URL` | Optional webhook endpoint for scrubbed job & plan alerts |
+| `WATCHDOG_ENABLED` / `GITHUB_WEBHOOK_SECRET` | Optional read-only GitHub CI Watchdog (`POST /webhooks/github`, fail-closed HMAC-SHA256) |
+| `WATCHDOG_ALLOWED_REPOS` / `WATCHDOG_AGENT_DRIVER` | Comma-separated `owner/repo` allowlist and optional readonly driver override |
 | `DOWNSTREAM_MCPS_FILE` / `_JSON` | Optional downstream MCP-2 federation registry |
 
 </details>
@@ -336,10 +338,31 @@ In addition to `ADMIN_PASSWORD_HASH`, you can enable **Google OAuth** and/or **G
 
 ---
 
+## Gemini Gem Prompt, Persistent Memory & MCP Prompts
+
+- **Ready-to-Paste Gem / Claude Project System Prompt**: Use [`docs/GEMINI_GEM_PROMPT.md`](docs/GEMINI_GEM_PROMPT.md) (English & 简体中文) when creating a dedicated **Gemini Gem** (`gemini.google.com/gems`), **Claude Project**, or **ChatGPT Custom GPT** so the model follows the 10-tool SOP automatically.
+- **MCP `instructions` & 4 Built-In Prompts**: `McpServer` ships concise `instructions` on `initialize` plus 4 official MCP Prompts (`review_pr`, `fix_issue`, `resume_workspace_task`, `ops_health_check`).
+- **Cross-Session Persistent Workspace Memory (`workspace_memories`)**:
+  - Store durable `task_state`, `decision`, `pitfall`, `preference`, and `note` entries via `workspace_manage` (`memory_list`, `memory_upsert`, `memory_delete` — secret-scanned before saving, up to 100 entries / 8KB per entry).
+  - `workspace_manage` (`list`, `sync_github`, `init_cf_ops`) automatically recalls pinned/recent memories, `dispatch_runner` (`include_memory: true`) injects `[Workspace Persistent Memory]` into background agents, and `/admin` includes a **Memory** tab to inspect or delete entries.
+
+---
+
+## Optional Read-Only GitHub CI Watchdog
+
+Enable `WATCHDOG_ENABLED=true` with `GITHUB_WEBHOOK_SECRET` (`>= 24` chars) and `WATCHDOG_ALLOWED_REPOS=owner/repo` to point GitHub `workflow_run` webhooks at `https://<PUBLIC_DOMAIN>/webhooks/github`:
+
+1. Requests are rate-limited, capped at 64KB (`413`), HMAC-SHA256 verified (`X-Hub-Signature-256` -> `401` on mismatch), and restricted to `WATCHDOG_ALLOWED_REPOS` (`403` otherwise).
+2. When a workflow fails (`action: "completed"`, `conclusion: "failure"`), the Watchdog dispatches a **strictly `readonly`** diagnostic job, saves a pinned `ci-failure-<runId>` `task_state` memory, and sends a scrubbed `NOTIFY_WEBHOOK_URL` alert so you can open Web Gemini and take over immediately.
+3. **100% Policy-Compliant**: Never writes repo code, never calls `publish_changes`, and never automates any consumer web UI.
+
+---
+
 ## Official MCP Registry & GHCR Images
 
-- **Official MCP Registry**: [`server.json`](server.json) (`io.github.kaiserunix/gemini-bastion-mcp`, schema `2025-12-11`)
-- **GHCR Images** (published automatically by [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)):
+- **Official MCP Registry**: [`server.json`](server.json) (`io.github.kaiserunix/gemini-bastion-mcp`, schema `2025-12-11`, validated via `mcp-publisher`).
+- **Automated OIDC Publishing (`github-oidc`)**: Tagging `v*` triggers [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) to push GHCR images first and then run `publish-mcp-registry` (`mcp-publisher validate` -> `mcp-publisher login github-oidc` -> `mcp-publisher publish server.json`).
+- **GHCR Images**:
   - `ghcr.io/kaiserunix/gemini-bastion-mcp:lite` / `:latest` / `:<version>-lite` (~350MB slim gateway + `bwrap` + `git` + `ripgrep`)
   - `ghcr.io/kaiserunix/gemini-bastion-mcp:full` / `:<version>-full` (adds Python 3.12 + `uv`, `mise`, `ruff`, `pyright`, `biome`, `ast-grep`, `repomix`, `shellcheck`, `hadolint`, `actionlint`, `gitleaks`, `gh`, `wrangler`)
   - `ghcr.io/kaiserunix/gemini-bastion-mcp-ops:latest` / `:<version>` (authenticated `ops-mcp` Bearer proxy sidecar)

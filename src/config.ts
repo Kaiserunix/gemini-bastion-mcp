@@ -176,6 +176,13 @@ const envSchema = z.object({
   AGENT_RUNNER_URL: optionalUrlSchema,
   AGENT_RUNNER_AUTH_TOKEN: z.string().optional().transform(emptyToUndefined),
   OPS_MCP_AUTH_TOKEN: z.string().optional().transform(emptyToUndefined),
+
+  WATCHDOG_ENABLED: z.string().optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().optional().transform(emptyToUndefined),
+  WATCHDOG_ALLOWED_REPOS: z.string().optional(),
+  WATCHDOG_AGENT_DRIVER: z
+    .enum(['codex', 'claude_code', 'gemini_cli', 'opencode'])
+    .optional(),
 });
 
 function canonicalizeWithAncestor(targetPath: string): string {
@@ -220,10 +227,20 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const googleOAuthAllowedEmails = parseCommaList(parsed.GOOGLE_OAUTH_ALLOWED_EMAILS, []);
   const githubOAuthAllowedUsers = parseCommaList(parsed.GITHUB_OAUTH_ALLOWED_USERS, []);
   const githubOAuthAllowedIds = parseCommaList(parsed.GITHUB_OAUTH_ALLOWED_IDS, []);
+  const watchdogEnabled = parseBooleanFlag(parsed.WATCHDOG_ENABLED, false);
+  const watchdogAllowedRepos = parseCommaList(parsed.WATCHDOG_ALLOWED_REPOS, []);
 
   for (const id of githubOAuthAllowedIds) {
     if (!/^\d+$/.test(id)) {
       throw new Error(`Invalid numeric GitHub user ID in GITHUB_OAUTH_ALLOWED_IDS: "${id}"`);
+    }
+  }
+
+  for (const repo of watchdogAllowedRepos) {
+    if (!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(repo)) {
+      throw new Error(
+        `Invalid repository slug in WATCHDOG_ALLOWED_REPOS: "${repo}" (expected owner/repo)`,
+      );
     }
   }
 
@@ -274,6 +291,23 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       ) {
         throw new Error(
           'AGENT_RUNNER_AUTH_TOKEN must be at least 24 non-placeholder characters when AGENT_RUNNER_URL is set in NODE_ENV=production',
+        );
+      }
+    }
+
+    if (watchdogEnabled) {
+      const webhookSecret = parsed.GITHUB_WEBHOOK_SECRET?.trim() ?? '';
+      if (
+        webhookSecret.length < 24 ||
+        /replace[-_]?with|change[-_]?me|example|secret[-_]?here|placeholder/i.test(webhookSecret)
+      ) {
+        throw new Error(
+          'GITHUB_WEBHOOK_SECRET must be at least 24 non-placeholder characters when WATCHDOG_ENABLED=true in NODE_ENV=production',
+        );
+      }
+      if (watchdogAllowedRepos.length === 0) {
+        throw new Error(
+          'WATCHDOG_ALLOWED_REPOS must be non-empty when WATCHDOG_ENABLED=true in NODE_ENV=production',
         );
       }
     }
@@ -382,6 +416,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     agentRunnerUrl: parsed.AGENT_RUNNER_URL,
     agentRunnerAuthToken: parsed.AGENT_RUNNER_AUTH_TOKEN,
     opsMcpAuthToken: parsed.OPS_MCP_AUTH_TOKEN,
+
+    watchdogEnabled,
+    githubWebhookSecret: parsed.GITHUB_WEBHOOK_SECRET,
+    watchdogAllowedRepos,
+    watchdogAgentDriver: parsed.WATCHDOG_AGENT_DRIVER,
   };
 }
 

@@ -883,6 +883,8 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     expect(dashHtml).toContain('kpiOauthSessions');
     expect(dashHtml).toContain('window.confirm');
     expect(dashHtml).toContain('toggle-log');
+    expect(dashHtml).toContain('data-tab="memory"');
+    expect(dashHtml).toContain('delete-memory');
     expect(dashHtml).not.toContain('onclick=');
     const metaMatch = /meta name="csrf-token" content="([^"]+)"/.exec(dashHtml);
     expect(metaMatch?.[1]).toBeTruthy();
@@ -925,6 +927,20 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
       expires_at: Date.now() + 60_000,
     });
 
+    const mem1 = repos.memories.upsertMemory({
+      workspaceSlug: 'demo-repo',
+      category: 'decision',
+      key: 'db-wal',
+      content: 'Use SQLite WAL mode for concurrent reads.',
+      pinned: true,
+    });
+    repos.memories.upsertMemory({
+      workspaceSlug: 'other-repo',
+      category: 'note',
+      key: 'misc',
+      content: 'Secondary workspace note.',
+    });
+
     // KPI Summary API
     const summaryRes = await app.request('https://mcp.example.com/admin/api/summary', {
       headers: { Cookie: `gb_admin_session=${sessionCookie}` },
@@ -935,10 +951,51 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
       stagedPlans: number;
       workspaces: number;
       oauthSessions: number;
+      memoriesCount: number;
     };
     expect(summaryData.activeJobs).toBe(1);
     expect(summaryData.stagedPlans).toBe(1);
     expect(summaryData.workspaces).toBe(1);
+    expect(summaryData.memoriesCount).toBe(2);
+
+    // Workspace Memory Admin API
+    const memListRes = await app.request(
+      'https://mcp.example.com/admin/api/memories?workspace=demo-repo&category=decision',
+      {
+        headers: { Cookie: `gb_admin_session=${sessionCookie}` },
+      },
+    );
+    expect(memListRes.status).toBe(200);
+    const memListData = (await memListRes.json()) as {
+      memories: Array<{ memory_id: string; key: string }>;
+    };
+    expect(memListData.memories).toHaveLength(1);
+    expect(memListData.memories[0]?.memory_id).toBe(mem1.memory_id);
+
+    const memDelRes = await app.request(
+      `https://mcp.example.com/admin/api/memories/${mem1.memory_id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Cookie: `gb_admin_session=${sessionCookie}`,
+          'X-CSRF-Token': apiCsrf,
+        },
+      },
+    );
+    expect(memDelRes.status).toBe(200);
+    expect(repos.memories.getMemoryById(mem1.memory_id)).toBeNull();
+
+    const memDelMissing = await app.request(
+      `https://mcp.example.com/admin/api/memories/${mem1.memory_id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Cookie: `gb_admin_session=${sessionCookie}`,
+          'X-CSRF-Token': apiCsrf,
+        },
+      },
+    );
+    expect(memDelMissing.status).toBe(404);
 
     // Audit API
     const auditRes = await app.request('https://mcp.example.com/admin/api/audit', {
