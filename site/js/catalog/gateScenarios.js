@@ -374,7 +374,7 @@ Audit Table : publish_changes.cloudflare_worker_deploy -> success`,
   "arguments": {
     "slug": "bastion-api",
     "command": "sh",
-    "args": ["-c", "echo GH=$GH_TOKEN CF=$CLOUDFLARE_API_TOKEN ghp_1234567890abcdefghijklmnopqrstuv"]
+    "args": ["-c", "echo GH=$GH_TOKEN CF=$CLOUDFLARE_API_TOKEN ghp_<example-demo-token>"]
   }
 }`,
         stateJson: `Sandboxed   : GH="" CF="" (never present in child process env)

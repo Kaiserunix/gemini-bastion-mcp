@@ -1,7 +1,9 @@
 # GeminiBastionMCP (`gemini-bastion-mcp`) — Product Experience, UX Audit & vNext Design Specification
 
-> **Document Status**: Active Product Design & UX Specification (`swarm/ux-design-2`)  
-> **Synthesized By**: `@design-copy-2` (Product Designer & UX Copywriter) & `@ux-sim-2` (Simulated End-User & Experience Tester)  
+> **Document Status**: Active Product Design & UX Specification (`swarm/ux-design-2`)
+>
+> **Synthesized By**: `@design-copy-2` (Product Designer & UX Copywriter) & `@ux-sim-2` (Simulated End-User & Experience Tester)
+>
 > **Codebase Baseline**: Verified line-by-line against `src/`, `docker/`, `site/`, `DESIGN.md`, `README.md`, `README.zh-CN.md`, and `.env.example` (`MCP 2025-11-25 Streamable HTTP`, Node.js `>= 22.23.4`).
 
 ---

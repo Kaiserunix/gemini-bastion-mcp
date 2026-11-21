@@ -1,6 +1,7 @@
 # GeminiBastionMCP (`gemini-bastion-mcp`) — User Journey Copy & Bilingual Microcopy Playbook
 
-> **Companion Artifact to**: [`docs/UX_EXPERIENCE_AND_DESIGN_SPEC.md`](./UX_EXPERIENCE_AND_DESIGN_SPEC.md) (`swarm/ux-design-2`)  
+> **Companion Artifact to**: [`docs/UX_EXPERIENCE_AND_DESIGN_SPEC.md`](./UX_EXPERIENCE_AND_DESIGN_SPEC.md) (`swarm/ux-design-2`)
+>
 > **Purpose**: Ready-to-use, code-truthful bilingual (`English` + `简体中文`) UX copy blocks for onboarding flows, the 60-second mobile Prompt-to-PR transcript, client setup guides, `/oauth/authorize`, `GET /`, and the `/admin` Mobile Operator Cockpit PWA.
 
 ---
@@ -8,11 +9,13 @@
 ## 1. Hero Positioning & 60-Second Mobile Prompt-to-PR Transcript
 
 ### 1.1 English Hero Hook
-> **Stop Clicking "Allow" 40 Times on Your Phone.**  
+> **Stop Clicking "Allow" 40 Times on Your Phone.**
+>
 > **Turn `gemini.google.com`, Claude.ai & ChatGPT into a sandboxed coding, background Codex & Cloudflare ops agent — with 10 tools funneled through 1 single external write gate (`publish_changes`).**
 
 ### 1.2 简体中文 Hero Hook
-> **告别在手机网页上连点 40 次「允许」的弹窗地狱。**  
+> **告别在手机网页上连点 40 次「允许」的弹窗地狱。**
+>
 > **将 `gemini.google.com`、Claude.ai 与 ChatGPT 一键接入自托管 OAuth 2.1 研发运维堡垒——隔离沙盒改码跑测、Codex 异步后台执行、10 大复合工具收敛至唯一外部写操作总闸门 (`publish_changes`)。**
 
 ### 1.3 The "60-Second Mobile Prompt-to-PR" User Journey Transcript
