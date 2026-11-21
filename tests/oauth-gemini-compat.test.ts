@@ -885,7 +885,12 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     expect(dashHtml).toContain('toggle-log');
     expect(dashHtml).toContain('data-tab="memory"');
     expect(dashHtml).toContain('delete-memory');
+    expect(dashHtml).toContain('data-tab="usage"');
+    expect(dashHtml).toContain('mark-limit');
     expect(dashHtml).not.toContain('onclick=');
+    const scriptMatch = /<script>([\s\S]*?)<\/script>/.exec(dashHtml);
+    expect(scriptMatch?.[1]).toBeTruthy();
+    new (await import('node:vm')).Script(scriptMatch![1]!);
     const metaMatch = /meta name="csrf-token" content="([^"]+)"/.exec(dashHtml);
     expect(metaMatch?.[1]).toBeTruthy();
     const apiCsrf = metaMatch![1]!;
@@ -957,6 +962,61 @@ describe('OAuth 2.1 Gemini Compatibility & Admin PWA', () => {
     expect(summaryData.stagedPlans).toBe(1);
     expect(summaryData.workspaces).toBe(1);
     expect(summaryData.memoriesCount).toBe(2);
+
+    // Usage Metering Admin API & Empirical Quota Limit Markers
+    repos.usage.recordToolCall({
+      toolName: 'code_explore',
+      clientId: 'gemini-client',
+      status: 'ok',
+      inputBytes: 120,
+      outputBytes: 1800,
+      estInputTokens: 30,
+      estOutputTokens: 450,
+      durationMs: 42,
+    });
+
+    const markNoCsrf = await app.request('https://mcp.example.com/admin/api/usage/mark-limit', {
+      method: 'POST',
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
+    });
+    expect(markNoCsrf.status).toBe(403);
+
+    const markRes = await app.request('https://mcp.example.com/admin/api/usage/mark-limit', {
+      method: 'POST',
+      headers: {
+        Cookie: `gb_admin_session=${sessionCookie}`,
+        'X-CSRF-Token': apiCsrf,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ note: 'Gemini Pro 3h cap reached' }),
+    });
+    expect(markRes.status).toBe(200);
+    const markJson = (await markRes.json()) as {
+      ok: boolean;
+      marker: { details: { note: string; last1h: { calls: number; estTotalTokens: number } } };
+    };
+    expect(markJson.ok).toBe(true);
+    expect(markJson.marker.details.note).toBe('Gemini Pro 3h cap reached');
+    expect(markJson.marker.details.last1h.calls).toBe(1);
+    expect(markJson.marker.details.last1h.estTotalTokens).toBe(480);
+
+    const usageRes = await app.request('https://mcp.example.com/admin/api/usage', {
+      headers: { Cookie: `gb_admin_session=${sessionCookie}` },
+    });
+    expect(usageRes.status).toBe(200);
+    const usageData = (await usageRes.json()) as {
+      summary: {
+        last1h: { calls: number; estTotalTokens: number };
+        byTool: Array<{ toolName: string; calls24h: number }>;
+        hourly24h: Array<{ calls: number }>;
+      };
+      limitMarkers: Array<{ details: { note: string } }>;
+    };
+    expect(usageData.summary.last1h.calls).toBe(1);
+    expect(usageData.summary.last1h.estTotalTokens).toBe(480);
+    expect(usageData.summary.byTool[0]?.toolName).toBe('code_explore');
+    expect(usageData.summary.hourly24h).toHaveLength(24);
+    expect(usageData.limitMarkers[0]?.details.note).toBe('Gemini Pro 3h cap reached');
 
     // Workspace Memory Admin API
     const memListRes = await app.request(

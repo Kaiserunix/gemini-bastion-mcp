@@ -639,6 +639,94 @@ export function renderAdminDashboardHtml(params: {
       font-size: 0.8125rem;
       max-width: 100%;
     }
+    .usage-note {
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      color: var(--ink-2);
+      margin: 0 0 14px;
+    }
+    .usage-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .usage-metric {
+      padding: 14px 16px;
+      border-right: 1px solid var(--border);
+    }
+    .usage-metric:last-child { border-right: none; }
+    @media (max-width: 700px) {
+      .usage-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .usage-metric:nth-child(2n) { border-right: none; }
+      .usage-metric:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+    }
+    .usage-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 92px;
+      padding-top: 8px;
+    }
+    .usage-bar-col {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      align-items: flex-end;
+    }
+    .usage-bar {
+      width: 100%;
+      min-height: 3px;
+      border-radius: 3px 3px 0 0;
+      background: var(--ink);
+      opacity: 0.82;
+    }
+    .usage-bar.zero {
+      background: var(--border-strong);
+      opacity: 0.55;
+    }
+    .usage-bar-axis {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      margin-top: 6px;
+    }
+    .usage-table-wrap { overflow-x: auto; margin-top: 8px; }
+    table.usage-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+      font-variant-numeric: tabular-nums;
+    }
+    table.usage-table th, table.usage-table td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    table.usage-table th {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    table.usage-table tr:last-child td { border-bottom: none; }
+    table.usage-table td.num, table.usage-table th.num { text-align: right; }
+    .marker-row {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .marker-row:last-child { border-bottom: none; padding-bottom: 0; }
   </style>
 </head>
 <body>
@@ -691,6 +779,7 @@ export function renderAdminDashboardHtml(params: {
       <button class="tab" data-tab="workspaces">Workspaces</button>
       <button class="tab" data-tab="memory">Memory (<span id="tabMemoriesCount">${kpis.memoriesCount}</span>)</button>
       <button class="tab" data-tab="oauth">OAuth</button>
+      <button class="tab" data-tab="usage">Usage</button>
       <button class="tab" data-tab="plans">Plans</button>
       <button class="tab" data-tab="audit">Audit</button>
     </nav>
@@ -701,6 +790,7 @@ export function renderAdminDashboardHtml(params: {
     <section id="tab-workspaces" class="panel"><div id="workspacesList" class="empty">Loading workspaces...</div></section>
     <section id="tab-memory" class="panel"><div id="memoryList" class="empty">Loading workspace memories...</div></section>
     <section id="tab-oauth" class="panel"><div id="oauthList" class="empty">Loading OAuth state...</div></section>
+    <section id="tab-usage" class="panel"><div id="usageView" class="empty">Loading usage metrics...</div></section>
     <section id="tab-plans" class="panel"><div id="plansList" class="empty">Loading mutation plans...</div></section>
     <section id="tab-audit" class="panel"><div id="auditList" class="empty">Loading audit logs...</div></section>
   </main>
@@ -709,6 +799,7 @@ export function renderAdminDashboardHtml(params: {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const fmtTime = (ms) => ms ? new Date(ms).toLocaleString() : '-';
+    const fmtNum = (n) => Number(n ?? 0).toLocaleString();
     const expandedLogs = new Set();
 
     async function apiFetch(path, opts = {}) {
@@ -918,8 +1009,78 @@ export function renderAdminDashboardHtml(params: {
       else if (action === 'delete-client') deleteClient(btn.getAttribute('data-id'));
       else if (action === 'revoke-token') revokeToken(btn.getAttribute('data-hash'));
       else if (action === 'delete-memory') deleteMemory(btn.getAttribute('data-id'));
+      else if (action === 'mark-limit') markQuotaLimit();
       else if (action === 'toggle-log') toggleJobLog(btn.getAttribute('data-id'), btn);
     });
+
+    async function loadUsage() {
+      const data = await apiFetch('/admin/api/usage');
+      if (!data || !data.summary) return;
+      const s = data.summary;
+      const markers = data.limitMarkers || [];
+      const el = document.getElementById('usageView');
+
+      const hourly = s.hourly24h || [];
+      const maxTok = hourly.reduce((m, b) => Math.max(m, b.estTotalTokens || 0), 0);
+      const maxCalls = hourly.reduce((m, b) => Math.max(m, b.calls || 0), 0);
+      const barsHtml = hourly.map((b) => {
+        const val = maxTok > 0 ? (b.estTotalTokens || 0) : (b.calls || 0);
+        const denom = maxTok > 0 ? maxTok : maxCalls;
+        const pct = denom > 0 && val > 0 ? Math.max(6, Math.round((val / denom) * 100)) : 3;
+        const hrLabel = new Date(b.hourStartMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const tip = hrLabel + ' · ' + b.calls + ' calls · ' + fmtNum(b.estTotalTokens) + ' est. tokens';
+        return '<div class="usage-bar-col"><div class="usage-bar' + (val === 0 ? ' zero' : '') + '" style="height:' + pct + '%" title="' + esc(tip) + '"></div></div>';
+      }).join('');
+
+      const tools = s.byTool || [];
+      const toolsHtml = tools.length
+        ? '<div class="usage-table-wrap"><table class="usage-table"><thead><tr><th>Tool</th><th class="num">24h</th><th class="num">30d</th><th class="num">Est. Tokens</th><th class="num">Avg ms</th></tr></thead><tbody>'
+          + tools.map((t) => '<tr><td><code>' + esc(t.toolName) + '</code></td><td class="num">' + esc(fmtNum(t.calls24h)) + '</td><td class="num">' + esc(fmtNum(t.calls30d)) + '</td><td class="num">' + esc(fmtNum(t.estTotalTokens30d)) + '</td><td class="num">' + esc(fmtNum(t.avgDurationMs30d)) + '</td></tr>').join('')
+          + '</tbody></table></div>'
+        : '<div class="empty">No MCP tool usage recorded yet.</div>';
+
+      const markersHtml = markers.length
+        ? markers.map((m) => {
+            const d = m.details || {};
+            const l1 = d.last1h || {};
+            const l3 = d.last3h || {};
+            const l24 = d.last24h || {};
+            return '<div class="marker-row"><div><div class="title">' + esc(d.note || 'Web AI quota limit hit') + '</div>'
+              + '<div class="meta">' + esc(fmtTime(m.created_at)) + '</div></div>'
+              + '<div class="meta">1h: ' + esc(l1.calls ?? 0) + ' / ' + esc(fmtNum(l1.estTotalTokens ?? 0)) + ' tok · 3h: ' + esc(l3.calls ?? 0) + ' / ' + esc(fmtNum(l3.estTotalTokens ?? 0)) + ' tok · 24h: ' + esc(l24.calls ?? 0) + ' / ' + esc(fmtNum(l24.estTotalTokens ?? 0)) + ' tok</div></div>';
+          }).join('')
+        : '<div class="empty">No quota limit snapshots recorded yet.</div>';
+
+      const ag = s.agentTokens && s.agentTokens.last30d ? s.agentTokens.last30d : { totalTokens: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+      el.innerHTML = '<p class="usage-note">Server-side MCP throughput estimates (Google does not expose Web Gemini\\\'s internal chat/thinking token quota) + exact background Agent SDK token totals.</p>'
+        + '<div class="usage-metrics">'
+        + '<div class="usage-metric"><div class="kpi-label">Last 1h</div><div class="kpi-value">' + esc(fmtNum(s.last1h.calls)) + '</div><div class="kpi-sub">' + esc(fmtNum(s.last1h.estTotalTokens)) + ' est. tokens</div></div>'
+        + '<div class="usage-metric"><div class="kpi-label">Last 24h</div><div class="kpi-value">' + esc(fmtNum(s.last24h.calls)) + '</div><div class="kpi-sub">' + esc(fmtNum(s.last24h.estTotalTokens)) + ' est. tokens</div></div>'
+        + '<div class="usage-metric"><div class="kpi-label">Last 30d</div><div class="kpi-value">' + esc(fmtNum(s.last30d.calls)) + '</div><div class="kpi-sub">' + esc(fmtNum(s.last30d.estTotalTokens)) + ' est. tokens</div></div>'
+        + '<div class="usage-metric"><div class="kpi-label">Agent SDK (30d)</div><div class="kpi-value">' + esc(fmtNum(ag.totalTokens)) + '</div><div class="kpi-sub">in ' + esc(fmtNum(ag.inputTokens)) + ' / cached ' + esc(fmtNum(ag.cachedInputTokens)) + ' / out ' + esc(fmtNum(ag.outputTokens)) + '</div></div>'
+        + '</div>'
+        + '<div class="card"><div class="row"><div class="title">24-Hour MCP Throughput</div><div class="meta">Hourly estimated tokens</div></div>'
+        + '<div class="usage-bars">' + barsHtml + '</div>'
+        + '<div class="usage-bar-axis"><span>-24h</span><span>-12h</span><span>Now</span></div></div>'
+        + '<div class="card"><div class="title">Per-Tool Breakdown</div>' + toolsHtml + '</div>'
+        + '<div class="card"><div class="row" style="align-items:center;"><div class="title">Empirical Limit Markers</div><button class="btn" type="button" data-action="mark-limit">Mark Quota Limit Hit</button></div>'
+        + markersHtml + '</div>';
+    }
+
+    async function markQuotaLimit() {
+      let note = 'Web AI quota limit hit';
+      if (typeof window.prompt === 'function') {
+        const entered = window.prompt('Optional note for this quota limit snapshot:', note);
+        if (entered === null) return;
+        if (entered.trim()) note = entered.trim();
+      }
+      await apiFetch('/admin/api/usage/mark-limit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note })
+      });
+      loadUsage();
+    }
 
     async function loadMemories() {
       const data = await apiFetch('/admin/api/memories');
@@ -968,6 +1129,7 @@ export function renderAdminDashboardHtml(params: {
       if (tab === 'workspaces') loadWorkspaces();
       else if (tab === 'memory') loadMemories();
       else if (tab === 'oauth') loadOAuth();
+      else if (tab === 'usage') loadUsage();
       else if (tab === 'plans') loadPlans();
       else if (tab === 'audit') loadAudit();
     }

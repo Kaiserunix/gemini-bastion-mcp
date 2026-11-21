@@ -269,6 +269,7 @@ export function createGatewayApp(
     try {
       repos.oauth.purgeExpired();
       repos.plans.expireStalePlans();
+      repos.usage.purgeOlderThan(Date.now() - 90 * 24 * 60 * 60 * 1000);
     } catch {
       // Non-fatal periodic cleanup
     }

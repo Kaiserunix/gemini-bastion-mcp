@@ -640,6 +640,90 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
     return c.json({ ok: true, memory_id: memoryId }, 200);
   });
 
+  app.get('/api/usage', (c) => {
+    const summary = repos.usage.getUsageSummary();
+    const limitMarkers = repos.audit
+      .list({ action: 'usage.limit_marker', limit: 15 })
+      .map((entry) =>
+        scrubber.scrubObject({
+          id: entry.id,
+          created_at: entry.created_at,
+          actor: entry.actor,
+          target: entry.target,
+          details: entry.details,
+        }),
+      );
+    return c.json({ summary, limitMarkers }, 200, { 'Cache-Control': 'no-store' });
+  });
+
+  app.post('/api/usage/mark-limit', async (c) => {
+    const bodyRead = await readLimitedBodyText(c);
+    if (!bodyRead.ok) {
+      return c.json({ error: 'payload_too_large' }, 413);
+    }
+
+    let rawNote = '';
+    const trimmed = bodyRead.text.trim();
+    if (trimmed.length > 0) {
+      try {
+        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return c.json({ error: 'invalid_json' }, 400);
+        }
+        if (typeof parsed.note === 'string') {
+          rawNote = parsed.note;
+        }
+      } catch {
+        return c.json({ error: 'invalid_json' }, 400);
+      }
+    }
+
+    const sanitizedNote = rawNote
+      .replace(/[\x00-\x1f\x7f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+    const note = scrubber.scrub(sanitizedNote || 'Web AI quota limit hit');
+    const summary = repos.usage.getUsageSummary();
+
+    const record = repos.audit.record({
+      actor: 'admin',
+      action: 'usage.limit_marker',
+      target: 'gemini-web',
+      status: 'ok',
+      details: {
+        note,
+        last1h: {
+          calls: summary.last1h.calls,
+          estTotalTokens: summary.last1h.estTotalTokens,
+        },
+        last3h: {
+          calls: summary.last3h.calls,
+          estTotalTokens: summary.last3h.estTotalTokens,
+        },
+        last24h: {
+          calls: summary.last24h.calls,
+          estTotalTokens: summary.last24h.estTotalTokens,
+        },
+        agentTokens24h: summary.agentTokens.last24h.totalTokens,
+      },
+    });
+
+    return c.json(
+      {
+        ok: true,
+        marker: {
+          id: record.id,
+          created_at: record.created_at,
+          actor: record.actor,
+          target: record.target,
+          details: record.details,
+        },
+      },
+      200,
+    );
+  });
+
   app.get('/api/audit', (c) => {
     const limit = parseLimit(c.req.query('limit'), 100, 500);
     const offsetRaw = Number(c.req.query('offset') ?? '0');

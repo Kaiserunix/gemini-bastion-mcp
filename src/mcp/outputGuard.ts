@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { estimateTokens } from '../db/repositories/usageRepo.js';
 import type { McpToolResult, ScrubberLike } from '../types.js';
 
 export const DEFAULT_MAX_OUTPUT_BYTES = 60_000;
@@ -8,6 +9,17 @@ export const DEFAULT_HEAD_BYTES = 25_000;
 export const DEFAULT_TAIL_BYTES = 25_000;
 
 export type McpRequiredScope = 'read' | 'write';
+
+export interface ToolUsageMetric {
+  toolName: string;
+  clientId?: string | null;
+  status: 'ok' | 'error';
+  inputBytes: number;
+  outputBytes: number;
+  estInputTokens: number;
+  estOutputTokens: number;
+  durationMs: number;
+}
 
 export interface GuardTextOutputOptions {
   scrubber: ScrubberLike;
@@ -19,6 +31,8 @@ export interface GuardTextOutputOptions {
   tailBytes?: number;
   untrustedSource?: string;
   requiredScope?: McpRequiredScope;
+  toolName?: string;
+  onToolUsage?: (metric: ToolUsageMetric) => void;
 }
 
 export interface GuardedOutputResult {
@@ -294,12 +308,22 @@ function hasSufficientScope(scopes: string[], required: McpRequiredScope): boole
   return false;
 }
 
+function safeSerializeArgs(args: unknown): string {
+  if (args === undefined || args === null) return '';
+  try {
+    return JSON.stringify(args) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Higher-order MCP tool handler wrapper guaranteeing:
  * 1. OAuth scope enforcement (`mcp:tools`/`mcp:write` vs `mcp:read`) when `extra.authInfo.scopes` is present.
  * 2. Output is ALWAYS `{ content: [{ type: "text", text }] }` (never relying on structuredContent).
  * 3. Secrets are scrubbed and oversized outputs are offloaded via `guardTextOutput`.
  * 4. Thrown errors are caught cleanly into `{ content: [{ type: "text", text }], isError: true }`.
+ * 5. Passive zero-secret-storage tool usage metering via `onToolUsage`.
  */
 export function withMcpGuardrails<TArgs = unknown, TExtra extends McpHandlerExtraLike = McpHandlerExtraLike>(
   handler: (args: TArgs, extra: TExtra) => Promise<unknown> | unknown,
@@ -307,7 +331,30 @@ export function withMcpGuardrails<TArgs = unknown, TExtra extends McpHandlerExtr
   requiredScope?: McpRequiredScope | ((args: TArgs) => McpRequiredScope),
 ): (args: TArgs, extra: TExtra) => Promise<McpToolResult> {
   return async (args: TArgs, extra: TExtra): Promise<McpToolResult> => {
+    const startMs = Date.now();
     const guardOpts = typeof deps === 'function' ? deps(args, extra) : deps;
+    const argJson = safeSerializeArgs(args);
+    const inputBytes = Buffer.byteLength(argJson, 'utf8');
+    const estInputTokens = estimateTokens(argJson);
+
+    const emitUsage = (status: 'ok' | 'error', outputText: string) => {
+      if (!guardOpts.onToolUsage) return;
+      try {
+        guardOpts.onToolUsage({
+          toolName: guardOpts.toolName ?? guardOpts.label ?? 'unknown',
+          clientId: extra?.authInfo?.clientId ?? null,
+          status,
+          inputBytes,
+          outputBytes: Buffer.byteLength(outputText, 'utf8'),
+          estInputTokens,
+          estOutputTokens: estimateTokens(outputText),
+          durationMs: Math.max(0, Date.now() - startMs),
+        });
+      } catch {
+        // Never allow passive metering to break an MCP tool call
+      }
+    };
+
     const effectiveScope =
       typeof requiredScope === 'function'
         ? requiredScope(args)
@@ -320,6 +367,7 @@ export function withMcpGuardrails<TArgs = unknown, TExtra extends McpHandlerExtr
           `Error: insufficient_scope — "${effectiveScope}" operation requires "mcp:tools" or "mcp:write" scope (granted: ${scopes.join(' ') || 'none'}).`,
           { ...guardOpts, untrustedSource: undefined },
         );
+        emitUsage('error', msg);
         return {
           content: [{ type: 'text', text: msg }],
           isError: true,
@@ -331,12 +379,14 @@ export function withMcpGuardrails<TArgs = unknown, TExtra extends McpHandlerExtr
       const rawResult = await handler(args, extra);
       const { text, isError } = extractRawTextAndErrorFlag(rawResult);
       const guardedText = guardTextOutput(text, guardOpts);
+      emitUsage(isError ? 'error' : 'ok', guardedText);
       return isError
         ? { content: [{ type: 'text', text: guardedText }], isError: true }
         : { content: [{ type: 'text', text: guardedText }] };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const guardedError = guardTextOutput(`Error: ${message}`, guardOpts);
+      emitUsage('error', guardedError);
       return {
         content: [{ type: 'text', text: guardedError }],
         isError: true,

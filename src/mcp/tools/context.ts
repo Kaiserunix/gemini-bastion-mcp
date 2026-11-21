@@ -25,6 +25,7 @@ export function buildGuardOptions(
   deps: McpToolDeps,
   label: string,
   untrustedSource?: string,
+  toolName?: string,
 ): GuardTextOutputOptions {
   return {
     scrubber: deps.scrubber,
@@ -33,6 +34,10 @@ export function buildGuardOptions(
     label,
     maxBytes: deps.config.inlineOutputMaxBytes ?? 60_000,
     untrustedSource,
+    toolName: toolName ?? label,
+    onToolUsage: (metric) => {
+      deps.repos?.usage?.recordToolCall(metric);
+    },
   };
 }
 

@@ -381,3 +381,73 @@ export interface ToolContext {
   scope?: string;
   notifyWebhook?: (event: string, payload: Record<string, unknown>) => Promise<void>;
 }
+
+// ============================================================================
+// MCP Throughput & Background Agent Token Metering
+// ============================================================================
+
+export interface McpUsageEventRecord {
+  id: number;
+  tool_name: string;
+  client_id: string | null;
+  status: 'ok' | 'error';
+  input_bytes: number;
+  output_bytes: number;
+  est_input_tokens: number;
+  est_output_tokens: number;
+  duration_ms: number;
+  created_at: number;
+}
+
+export interface UsageWindowSummary {
+  calls: number;
+  errors: number;
+  inputBytes: number;
+  outputBytes: number;
+  estInputTokens: number;
+  estOutputTokens: number;
+  estTotalTokens: number;
+  avgDurationMs: number;
+  lastCallAt: number | null;
+}
+
+export interface ToolUsageBreakdown {
+  toolName: string;
+  calls24h: number;
+  calls30d: number;
+  errors30d: number;
+  estTotalTokens30d: number;
+  avgDurationMs30d: number;
+}
+
+export interface HourlyUsageBucket {
+  hourStartMs: number;
+  calls: number;
+  estTotalTokens: number;
+}
+
+export interface AgentTokenWindowSummary {
+  jobsCount: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface UsageSummary {
+  generatedAt: number;
+  last1h: UsageWindowSummary;
+  last3h: UsageWindowSummary;
+  last24h: UsageWindowSummary;
+  last7d: UsageWindowSummary;
+  last30d: UsageWindowSummary;
+  allTime: UsageWindowSummary;
+  byTool: ToolUsageBreakdown[];
+  hourly24h: HourlyUsageBucket[];
+  agentTokens: {
+    last24h: AgentTokenWindowSummary;
+    last7d: AgentTokenWindowSummary;
+    last30d: AgentTokenWindowSummary;
+    allTime: AgentTokenWindowSummary;
+  };
+}

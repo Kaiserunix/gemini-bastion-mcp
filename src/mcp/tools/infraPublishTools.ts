@@ -101,7 +101,12 @@ export function registerInfraPublishTools(server: McpServer, deps: McpToolDeps):
         return res.summaryText;
       },
       (args) => ({
-        ...buildGuardOptions(deps, `github-${args.mode}`, `github:${args.mode}:${args.repo}`),
+        ...buildGuardOptions(
+          deps,
+          `github-${args.mode}`,
+          `github:${args.mode}:${args.repo}`,
+          'github_inspect',
+        ),
         requiredScope: 'read',
       }),
     ),
@@ -186,7 +191,7 @@ export function registerInfraPublishTools(server: McpServer, deps: McpToolDeps):
         return res.summaryText;
       },
       (args) => ({
-        ...buildGuardOptions(deps, `infra-${args.action}`),
+        ...buildGuardOptions(deps, `infra-${args.action}`, undefined, 'infra_inspect'),
         requiredScope: 'read',
       }),
     ),
@@ -351,7 +356,7 @@ export function registerInfraPublishTools(server: McpServer, deps: McpToolDeps):
         ].join('\n');
       },
       (args) => ({
-        ...buildGuardOptions(deps, `stage-${args.target}`),
+        ...buildGuardOptions(deps, `stage-${args.target}`, undefined, 'stage_mutation_plan'),
         requiredScope: 'write',
       }),
     ),
@@ -654,7 +659,7 @@ export function registerInfraPublishTools(server: McpServer, deps: McpToolDeps):
         }
       },
       (args) => ({
-        ...buildGuardOptions(deps, `publish-${args.action}`),
+        ...buildGuardOptions(deps, `publish-${args.action}`, undefined, 'publish_changes'),
         requiredScope: 'write',
       }),
     ),

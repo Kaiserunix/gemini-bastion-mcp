@@ -791,5 +791,27 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     );
     expect(roCancelBlocked.isError).toBe(true);
     expect(roCancelBlocked.content[0].text).toContain('insufficient_scope');
+
+    // 12. Passive MCP tool usage metering records numeric metrics only (never raw args or secrets)
+    const usageSummary = gateway.repos.usage.getUsageSummary();
+    expect(usageSummary.last1h.calls).toBeGreaterThanOrEqual(8);
+    expect(usageSummary.last1h.errors).toBeGreaterThanOrEqual(2);
+    expect(usageSummary.last1h.inputBytes).toBeGreaterThan(0);
+    expect(usageSummary.last1h.outputBytes).toBeGreaterThan(0);
+    expect(usageSummary.last1h.estInputTokens).toBeGreaterThan(0);
+    expect(usageSummary.last1h.estOutputTokens).toBeGreaterThan(0);
+    expect(usageSummary.byTool.some((t) => t.toolName === 'workspace_manage' && t.calls30d >= 2)).toBe(true);
+    expect(usageSummary.byTool.some((t) => t.toolName === 'code_patch' && t.calls30d >= 1)).toBe(true);
+    expect(usageSummary.byTool.some((t) => t.toolName === 'dispatch_runner' && t.calls30d >= 1)).toBe(true);
+
+    const rawUsageRows = gateway.db.prepare('SELECT * FROM mcp_usage_events').all() as Array<
+      Record<string, unknown>
+    >;
+    expect(rawUsageRows.length).toBe(usageSummary.allTime.calls);
+    const serializedRows = JSON.stringify(rawUsageRows);
+    expect(serializedRows).not.toContain('ghp_e2e_secret_token');
+    expect(serializedRows).not.toContain('Summarize repository architecture');
+    expect(serializedRows).not.toContain('cf_e2e_write_token');
+    expect(rawUsageRows.every((r) => r.client_id === dcrBody.client_id)).toBe(true);
   });
 });

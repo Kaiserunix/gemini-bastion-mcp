@@ -273,7 +273,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
           .join('\n\n');
       },
       (args) => ({
-        ...buildGuardOptions(deps, `exec-${args.slug}`),
+        ...buildGuardOptions(deps, `exec-${args.slug}`, undefined, 'workspace_exec'),
         requiredScope: 'write',
       }),
     ),
@@ -416,7 +416,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
         ].join('\n');
       },
       (args) => ({
-        ...buildGuardOptions(deps, `dispatch-${args.slug}`),
+        ...buildGuardOptions(deps, `dispatch-${args.slug}`, undefined, 'dispatch_runner'),
         requiredScope: 'write',
       }),
     ),
@@ -511,7 +511,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
           .join('\n');
       },
       (args) => ({
-        ...buildGuardOptions(deps, `job-${args.job_id}`),
+        ...buildGuardOptions(deps, `job-${args.job_id}`, undefined, 'job_status'),
         requiredScope: args.cancel ? 'write' : 'read',
       }),
     ),

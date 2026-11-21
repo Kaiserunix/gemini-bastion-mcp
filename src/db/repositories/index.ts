@@ -4,6 +4,7 @@ import { JobRepository } from './jobRepo.js';
 import { MemoryRepository } from './memoryRepo.js';
 import { OAuthRepository } from './oauthRepo.js';
 import { PlanRepository } from './planRepo.js';
+import { UsageRepository } from './usageRepo.js';
 import { WorkspaceRepository } from './workspaceRepo.js';
 
 export { AuditRepository } from './auditRepo.js';
@@ -18,6 +19,11 @@ export {
 } from './memoryRepo.js';
 export { OAuthRepository } from './oauthRepo.js';
 export { PlanRepository, type ClaimPlanResult } from './planRepo.js';
+export {
+  UsageRepository,
+  estimateTokens,
+  type RecordToolCallInput,
+} from './usageRepo.js';
 export { WorkspaceRepository } from './workspaceRepo.js';
 
 export interface Repositories {
@@ -27,6 +33,7 @@ export interface Repositories {
   jobs: JobRepository;
   plans: PlanRepository;
   audit: AuditRepository;
+  usage: UsageRepository;
 }
 
 export function createRepositories(db: GatewayDatabase): Repositories {
@@ -37,5 +44,6 @@ export function createRepositories(db: GatewayDatabase): Repositories {
     jobs: new JobRepository(db),
     plans: new PlanRepository(db),
     audit: new AuditRepository(db),
+    usage: new UsageRepository(db),
   };
 }

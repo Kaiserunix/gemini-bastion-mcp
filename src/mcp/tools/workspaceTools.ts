@@ -511,7 +511,7 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
         }
       },
       (args) => ({
-        ...buildGuardOptions(deps, `workspace-${args.action}`),
+        ...buildGuardOptions(deps, `workspace-${args.action}`, undefined, 'workspace_manage'),
         requiredScope: ['list', 'init_cf_ops', 'list_checkpoints', 'memory_list'].includes(
           args.action,
         )
@@ -758,7 +758,7 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
         });
       },
       (args) => ({
-        ...buildGuardOptions(deps, `explore-${args.mode}`),
+        ...buildGuardOptions(deps, `explore-${args.mode}`, undefined, 'code_explore'),
         requiredScope: 'read',
       }),
     ),
@@ -866,7 +866,7 @@ export function registerWorkspaceTools(server: McpServer, deps: McpToolDeps): vo
           .join('\n');
       },
       (args) => ({
-        ...buildGuardOptions(deps, `patch-${args.slug}`),
+        ...buildGuardOptions(deps, `patch-${args.slug}`, undefined, 'code_patch'),
         requiredScope: 'write',
       }),
     ),
