@@ -184,31 +184,14 @@ const MIGRATIONS: Migration[] = [
     version: 4,
     name: 'mcp_usage_events',
     up(db) {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS mcp_usage_events (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          tool_name TEXT NOT NULL,
-          client_id TEXT,
-          status TEXT NOT NULL,
-          input_bytes INTEGER NOT NULL,
-          output_bytes INTEGER NOT NULL,
-          est_input_tokens INTEGER NOT NULL,
-          est_output_tokens INTEGER NOT NULL,
-          duration_ms INTEGER NOT NULL,
-          created_at INTEGER NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_mcp_usage_events_created
-          ON mcp_usage_events (created_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_mcp_usage_events_tool
-          ON mcp_usage_events (tool_name, created_at DESC);
-      `);
+      ensureMcpUsageEventsSchema(db);
     },
   },
   {
     version: 5,
     name: 'oauth_codes_issued_family',
     up(db) {
+      ensureMcpUsageEventsSchema(db);
       const cols = db.prepare('PRAGMA table_info(oauth_codes)').all() as Array<{ name: string }>;
       if (!cols.some((c) => c.name === 'issued_family_id')) {
         db.exec('ALTER TABLE oauth_codes ADD COLUMN issued_family_id TEXT;');
@@ -216,6 +199,28 @@ const MIGRATIONS: Migration[] = [
     },
   },
 ];
+
+function ensureMcpUsageEventsSchema(db: GatewayDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mcp_usage_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tool_name TEXT NOT NULL,
+      client_id TEXT,
+      status TEXT NOT NULL,
+      input_bytes INTEGER NOT NULL,
+      output_bytes INTEGER NOT NULL,
+      est_input_tokens INTEGER NOT NULL,
+      est_output_tokens INTEGER NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mcp_usage_events_created
+      ON mcp_usage_events (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_mcp_usage_events_tool
+      ON mcp_usage_events (tool_name, created_at DESC);
+  `);
+}
 
 /**
  * Applies all pending schema migrations idempotently inside transactions.

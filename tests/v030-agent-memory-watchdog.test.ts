@@ -4,10 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import Database from 'better-sqlite3';
 import { createGatewayApp, type GatewayAppInstance } from '../src/app.js';
 import { computeS256Challenge, hashPasswordScrypt } from '../src/auth/index.js';
 import { loadConfig } from '../src/config.js';
 import { verifyGitHubWebhookSignature } from '../src/core/watchdogService.js';
+import { UsageRepository } from '../src/db/repositories/usageRepo.js';
+import { openDatabase } from '../src/db/sqlite.js';
 import type { AgentRunOptions, AgentRunner } from '../src/types.js';
 
 const tempDirs: string[] = [];
@@ -750,5 +753,97 @@ describe('v0.3.0 Agent Intelligence, Persistent Memory & Read-Only CI Watchdog',
     expect(injectedMemory!.content).not.toContain('\r');
     expect(injectedMemory!.content).not.toContain('<<<');
     expect(injectedMemory!.content).not.toContain('evil.example.com');
+  });
+
+  it('converges both SQLite v4/v5 upgrade paths (Path A usage-first and Path B oauth-first) cleanly', () => {
+    const rootDir = makeTempDir('v030-sqlite-paths-');
+    const pathA = path.join(rootDir, 'path-a.db');
+    const pathB = path.join(rootDir, 'path-b.db');
+
+    // Path A: live tencent-codex state (v4 = mcp_usage_events, NO issued_family_id)
+    const initA = openDatabase(pathA);
+    initA.close();
+    const rawA = new Database(pathA);
+    rawA.exec('DELETE FROM schema_migrations WHERE version = 5;');
+    rawA.exec('ALTER TABLE oauth_codes DROP COLUMN issued_family_id;');
+    new UsageRepository(rawA).recordToolCall({
+      toolName: 'workspace_manage',
+      status: 'ok',
+      inputBytes: 32,
+      outputBytes: 128,
+      estInputTokens: 8,
+      estOutputTokens: 32,
+      durationMs: 12,
+    });
+    rawA.close();
+
+    const upgradedA = openDatabase(pathA);
+    try {
+      const versionsA = (
+        upgradedA.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{
+          version: number;
+        }>
+      ).map((r) => r.version);
+      expect(versionsA).toEqual([1, 2, 3, 4, 5]);
+
+      const colsA = (
+        upgradedA.prepare('PRAGMA table_info(oauth_codes)').all() as Array<{ name: string }>
+      ).map((c) => c.name);
+      expect(colsA).toContain('issued_family_id');
+
+      const usageA = new UsageRepository(upgradedA).getUsageSummary();
+      expect(usageA.allTime.calls).toBe(1);
+    } finally {
+      upgradedA.close();
+    }
+
+    // Path B: upstream 9f8fb1b state (v4 = oauth_codes_issued_family, NO mcp_usage_events table)
+    const initB = openDatabase(pathB);
+    initB.close();
+    const rawB = new Database(pathB);
+    rawB.exec('DELETE FROM schema_migrations WHERE version = 5;');
+    rawB.exec("UPDATE schema_migrations SET name = 'oauth_codes_issued_family' WHERE version = 4;");
+    rawB.exec('DROP TABLE mcp_usage_events;');
+    rawB.close();
+
+    const upgradedB = openDatabase(pathB);
+    try {
+      const versionsB = (
+        upgradedB.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as Array<{
+          version: number;
+        }>
+      ).map((r) => r.version);
+      expect(versionsB).toEqual([1, 2, 3, 4, 5]);
+
+      const colsB = (
+        upgradedB.prepare('PRAGMA table_info(oauth_codes)').all() as Array<{ name: string }>
+      ).map((c) => c.name);
+      expect(colsB).toContain('issued_family_id');
+
+      const indexesB = (
+        upgradedB
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mcp_usage_events'",
+          )
+          .all() as Array<{ name: string }>
+      ).map((i) => i.name);
+      expect(indexesB).toContain('idx_mcp_usage_events_created');
+      expect(indexesB).toContain('idx_mcp_usage_events_tool');
+
+      const repoB = new UsageRepository(upgradedB);
+      repoB.recordToolCall({
+        toolName: 'code_explore',
+        status: 'ok',
+        inputBytes: 40,
+        outputBytes: 200,
+        estInputTokens: 10,
+        estOutputTokens: 50,
+        durationMs: 18,
+      });
+      const usageB = repoB.getUsageSummary();
+      expect(usageB.allTime.calls).toBe(1);
+    } finally {
+      upgradedB.close();
+    }
   });
 });
