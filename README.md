@@ -22,7 +22,7 @@
 
 **English | [简体中文](README.zh-CN.md)**
 
-[Live Showcase](https://kaiserunix.github.io/gemini-bastion-mcp/) · [Why This Exists](#why-this-exists) · [Architecture](#architecture-overview) · [10 Tools & Memory](#10-tools-1-approval-gate) · [Gem Prompt & MCP Prompts](#gemini-gem-prompt--mcp-prompts) · [CI Watchdog](#optional-read-only-github-ci-watchdog) · [Quick Start](#1-minute-quick-start-ghcr-zero-build) · [Security v2](#security-architecture-v2-6-layer-defense-in-depth) · [MCP Registry](#official-mcp-registry--ghcr-images)
+[Live Showcase](https://kaiserunix.github.io/gemini-bastion-mcp/) · [Why This Exists](#why-this-exists) · [Architecture](#architecture-overview) · [10 Tools & Memory](#10-tools-1-approval-gate) · [Gem Prompt & MCP Prompts](#gemini-gem-prompt--mcp-prompts) · [CI Watchdog](#optional-read-only-github-ci-watchdog) · [Quick Start](#1-minute-quick-start-ghcr-zero-build) · [Security v2](#security-architecture-v2-6-layer-defense-in-depth) · [MCP Registry](#official-mcp-registry--ghcr-images) · [Docs](docs/INDEX.md)
 
 </div>
 
@@ -34,6 +34,17 @@
 
 > [!TIP]
 > **Skip the build!** Pull pre-built multi-variant GHCR images (`ghcr.io/kaiserunix/gemini-bastion-mcp:lite` ~350MB or `:full`) and launch in under 60 seconds with `docker compose pull && docker compose up -d`.
+
+---
+
+## What a 60-Second Mobile Prompt-to-PR Looks Like
+
+> **You (on phone in Web Gemini):** *"Check why CI failed on PR #42, fix the bug, run tests, and open a fix PR."*
+>
+> 1. `github_inspect` *(Tier 1 · Always Allow)* — Fetches failed Actions logs wrapped in an untrusted-data boundary.
+> 2. `workspace_manage` + `code_explore` *(Tier 1 · Always Allow)* — Syncs repo to `/workspaces/{slug}`, recalls pinned workspace memory, and locates the fault via `ripgrep` / `ast-grep`.
+> 3. `code_patch` + `workspace_exec` *(Tier 1 · Always Allow)* — Creates an automatic `GIT_INDEX_FILE` checkpoint, applies the atomic patch, and runs the test suite inside the per-workspace `bwrap` jail as UID `1002` (`worker`) with zero gateway secrets.
+> 4. `publish_changes` *(Tier 3 · **Ask Before Running — 1 prompt total**)* — Shows the scrubbed branch/PR summary. You tap **Allow once** → PR opens on a non-protected branch (`main`/`master` direct push blocked).
 
 ---
 
@@ -375,6 +386,7 @@ Enable `WATCHDOG_ENABLED=true` with `GITHUB_WEBHOOK_SECRET` (`>= 24` chars) and 
 > **Have a bug report, new agent driver idea, or client OAuth quirk (Gemini / Claude / ChatGPT)?**
 > Please [open a GitHub Issue](https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose), submit a PR, or start a thread in [GitHub Discussions](https://github.com/Kaiserunix/gemini-bastion-mcp/discussions) — community feedback directly shapes our next release!
 
+- **Documentation Hub**: [Documentation Index (`docs/INDEX.md`)](docs/INDEX.md) · [Architecture (`DESIGN.md`)](DESIGN.md) · [Gemini Gem Prompt (`docs/GEMINI_GEM_PROMPT.md`)](docs/GEMINI_GEM_PROMPT.md) · [Product Strategy (`docs/PRODUCT_STRATEGY.md`)](docs/PRODUCT_STRATEGY.md) · [UX Design Spec (`docs/UX_EXPERIENCE_AND_DESIGN_SPEC.md`)](docs/UX_EXPERIENCE_AND_DESIGN_SPEC.md)
 - **Roadmap**: Per-job ephemeral container/microVM worker isolation (`v0.3`) and multi-operator RBAC policies.
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, architectural guardrails, and PR checklist.
 - **Security Policy**: See [SECURITY.md](SECURITY.md) for threat model and private vulnerability reporting.

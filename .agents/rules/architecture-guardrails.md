@@ -11,7 +11,7 @@ These guardrails are mandatory invariants for all code, tests, and refactors in 
 
 ## 2. Codex Execution Model
 - **NO deprecated `codex mcp-server` CLI**: Never shell out to `codex mcp-server` or parse stdio MCP from Codex CLI.
-- **Official `@openai/codex-sdk`**: `CodexRunner` MUST use `@openai/codex-sdk` (`Codex` / `startThread` / `resumeThread` / `runStreamed`), honoring `CODEX_DEFAULT_MODEL`, `CODEX_REASONING_EFFORT`, `CODEX_MAX_DURATION_SEC`, `CODEX_TOKEN_BUDGET`, `AbortSignal`, and sandbox mode (`read-only` vs `workspace-write`).
+- **Official `@openai/codex-sdk`**: `CodexSdkRunner` (`src/core/codexRunner.ts`) MUST use `@openai/codex-sdk` (`Codex` / `startThread` / `resumeThread` / `runStreamed`), honoring `CODEX_DEFAULT_MODEL`, `CODEX_REASONING_EFFORT`, `CODEX_MAX_DURATION_SEC`, `CODEX_TOKEN_BUDGET`, `AbortSignal`, and sandbox mode (`read-only` vs `workspace-write`).
 
 ## 3. OAuth 2.1 + DCR + Gemini Compatibility
 - **Dynamic Client Registration (DCR)**: `POST /oauth/register` MUST support up to **16 redirect URIs** per client (`redirect_uris.length <= 16`) and validate hosts against `OAUTH_ALLOWED_REDIRECT_HOSTS` (plus loopback `localhost`/`127.0.0.1`).
@@ -22,16 +22,16 @@ These guardrails are mandatory invariants for all code, tests, and refactors in 
 
 ## 4. Mutation Funnel & Blast-Radius Containment
 - **Single External Mutation Exit (`publish_changes`)**: Every external side effect — GitHub PR creation, PR review comments, issue comments, Cloudflare Worker/Pages deployment, staged infrastructure mutation execution, or downstream MCP-2 mutating tool execution — MUST be funneled strictly through `publish_changes`.
-- **Two-Phase Staging for Infra / MCP-2 Mutations**: `infra_inspect` is strictly read-only (`readonlyTools` only). Any mutating Cloudflare API action or downstream MCP-2 `mutatingTools` call MUST first be staged via `stage_mutation_plan` (capturing pre-change rollback snapshot and 15-minute expiry) and then explicitly executed via `publish_changes` (`execute_staged_plan`).
+- **Two-Phase Staging for Infra / MCP-2 Mutations**: `infra_inspect` is strictly read-only (`readonlyTools` only). Any mutating Cloudflare API action (`dns_record_*`, `waf_rule_update`, `d1_sql_mutation`) or downstream MCP-2 `mutatingTools` call MUST first be staged via `stage_mutation_plan` (capturing a pre-change rollback snapshot for Cloudflare plans—or caller-provided `rollback_sql` for D1—and a 15-minute expiry; downstream MCP-2 plans store `rollback_payload: null`) and then explicitly executed via `publish_changes` (`execute_staged_plan`).
 - **Protected Branch Enforcement**: `publish_changes` (`github_pr`) MUST NEVER push directly to `main`, `master`, or the repository's `default_branch`; it must create a feature branch, open a PR, and verify diff safety.
 
 ## 5. Secret Isolation & Output Scrubbing
-- **Zero Gateway Secret Leakage**: `workspace_exec`, `dispatch_runner` (`shell_task` and Codex), and git hooks MUST run with `buildSandboxedEnv()`, which constructs a strict env allowlist and strips `GH_TOKEN`, `CLOUDFLARE_*`, `OPENAI_API_KEY` (except sanitized Codex auth when specifically needed by Codex SDK), `OAUTH_SIGNING_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*`.
+- **Zero Gateway Secret Leakage**: `workspace_exec`, `dispatch_runner` (`shell_task`), and git commands MUST run with `buildSandboxedEnv()`, which constructs a strict env allowlist and strips `GH_TOKEN`, `CLOUDFLARE_*`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `OAUTH_SIGNING_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*`. `CodexSdkRunner` MUST use `buildCodexSandboxedEnv()`, which adds only `CODEX_HOME`, `CODEX_API_KEY`/`OPENAI_API_KEY`, and optional `CODEX_BASE_URL`/`OPENAI_BASE_URL`.
 - **Mandatory `SecretScrubber`**: All tool outputs, logs, artifacts, webhook payloads, and error messages MUST pass through `SecretScrubber.scrub()` before leaving the gateway or being persisted.
-- **UID & Directory Isolation**: `/data` (SQLite + artifacts) MUST live outside `/workspaces` so sandboxed commands in `/workspaces/{slug}` cannot access gateway state or truncated artifacts directly.
+- **UID & Directory Isolation**: `/data` (SQLite, `/data/artifacts`, and `CODEX_HOME=/data/codex`, owned by UID 1001 `gateway` mode `0700`) MUST live outside `/workspaces` (owned by UID 1002 `worker`) so sandboxed commands in `/workspaces/{slug}` cannot access gateway state or truncated artifacts directly.
 
 ## 6. Git Checkpoints & Artifact Offloading
-- **Non-Destructive Snapshots via `GIT_INDEX_FILE`**: Auto-checkpoints before `code_patch`, `dispatch_runner`, or rollback MUST use a temporary `GIT_INDEX_FILE` (`git read-tree` / `git add -A` / `git write-tree` / `git commit-tree`) so the user's working tree index and `HEAD` are never mutated unexpectedly.
+- **Non-Destructive Snapshots via `GIT_INDEX_FILE`**: Auto-checkpoints before `code_patch`, `dispatch_runner`, or rollback MUST copy `.git/index` to a temporary `GIT_INDEX_FILE` and run `git add -A` / `git write-tree` / `git commit-tree` / `git update-ref` (`refs/mcp-checkpoints/*`) so the workspace's real `.git/index` and `HEAD` are never mutated unexpectedly (`git read-tree --reset -u` is used only on rollback).
 - **Artifact Offloading**: Tool outputs exceeding inline byte limits MUST be written to `ARTIFACTS_DIR` (`/data/artifacts`, outside `/workspaces`), returning a bounded preview and `artifact_id` readable via `code_explore` (`mode: "read_artifact"`).
 
 ## 7. Untrusted Boundary Hardening

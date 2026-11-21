@@ -1,8 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
-import type { OAuthRepository } from '../db/repositories/oauthRepo.js';
 import type { GatewayConfig } from '../types.js';
 import { hashToken } from './crypto.js';
 import { isValidResource } from './discovery.js';
+import type { OAuthStore } from './store.js';
 
 export interface OAuthAuthContext {
   clientId: string;
@@ -13,7 +13,8 @@ export interface OAuthAuthContext {
 
 export interface BearerMiddlewareDeps {
   config: GatewayConfig;
-  oauthRepo: OAuthRepository;
+  oauthStore?: Pick<OAuthStore, 'getTokenByHash'>;
+  oauthRepo?: Pick<OAuthStore, 'getTokenByHash'>;
 }
 
 /**
@@ -29,24 +30,30 @@ export function buildWwwAuthenticateHeader(publicDomain: string): string {
  * Validates token presence, SHA-256 hash lookup, expiration, revocation, and RFC 8707 resource audience.
  */
 export function createBearerMiddleware(deps: BearerMiddlewareDeps): MiddlewareHandler {
-  const { config, oauthRepo } = deps;
+  const { config } = deps;
+  const oauthStore = deps.oauthStore ?? deps.oauthRepo;
+  if (!oauthStore) {
+    throw new Error('createBearerMiddleware requires oauthStore or oauthRepo');
+  }
   const wwwAuth = buildWwwAuthenticateHeader(config.publicDomain);
 
   return async (c, next) => {
     const authHeader = c.req.header('authorization');
     if (!authHeader) {
       c.header('WWW-Authenticate', wwwAuth);
+      c.header('Cache-Control', 'no-store');
       return c.json({ error: 'unauthorized', error_description: 'Missing Authorization header' }, 401);
     }
 
     const match = /^Bearer\s+(.+)$/i.exec(authHeader.trim());
     if (!match || !match[1]) {
       c.header('WWW-Authenticate', wwwAuth);
+      c.header('Cache-Control', 'no-store');
       return c.json({ error: 'unauthorized', error_description: 'Invalid Bearer token format' }, 401);
     }
 
     const rawToken = match[1].trim();
-    const tokenRecord = oauthRepo.getTokenByHash(hashToken(rawToken));
+    const tokenRecord = oauthStore.getTokenByHash(hashToken(rawToken));
     const now = Date.now();
 
     if (
@@ -56,6 +63,7 @@ export function createBearerMiddleware(deps: BearerMiddlewareDeps): MiddlewareHa
       tokenRecord.expires_at <= now
     ) {
       c.header('WWW-Authenticate', wwwAuth);
+      c.header('Cache-Control', 'no-store');
       return c.json(
         { error: 'invalid_token', error_description: 'Access token is invalid, expired, or revoked' },
         401,
@@ -64,6 +72,7 @@ export function createBearerMiddleware(deps: BearerMiddlewareDeps): MiddlewareHa
 
     if (tokenRecord.resource === null || !isValidResource(tokenRecord.resource, config.publicDomain)) {
       c.header('WWW-Authenticate', wwwAuth);
+      c.header('Cache-Control', 'no-store');
       return c.json(
         { error: 'invalid_token', error_description: 'Token resource audience mismatch' },
         401,

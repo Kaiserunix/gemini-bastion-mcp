@@ -1,5 +1,5 @@
 import type { GatewayDatabase } from '../sqlite.js';
-import { AuditRepository } from './auditRepo.js';
+import { AuditRepository, type AuditRepositoryOptions } from './auditRepo.js';
 import { JobRepository } from './jobRepo.js';
 import { MemoryRepository } from './memoryRepo.js';
 import { OAuthRepository } from './oauthRepo.js';
@@ -7,7 +7,7 @@ import { PlanRepository } from './planRepo.js';
 import { UsageRepository } from './usageRepo.js';
 import { WorkspaceRepository } from './workspaceRepo.js';
 
-export { AuditRepository } from './auditRepo.js';
+export { AuditRepository, type AuditRepositoryOptions } from './auditRepo.js';
 export { JobRepository } from './jobRepo.js';
 export {
   MAX_MEMORIES_PER_WORKSPACE,
@@ -36,14 +36,17 @@ export interface Repositories {
   usage: UsageRepository;
 }
 
-export function createRepositories(db: GatewayDatabase): Repositories {
+export function createRepositories(
+  db: GatewayDatabase,
+  auditOptions?: AuditRepositoryOptions,
+): Repositories {
   return {
     oauth: new OAuthRepository(db),
     workspaces: new WorkspaceRepository(db),
     memories: new MemoryRepository(db),
     jobs: new JobRepository(db),
     plans: new PlanRepository(db),
-    audit: new AuditRepository(db),
+    audit: new AuditRepository(db, auditOptions),
     usage: new UsageRepository(db),
   };
 }

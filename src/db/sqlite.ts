@@ -205,6 +205,16 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    name: 'oauth_codes_issued_family',
+    up(db) {
+      const cols = db.prepare('PRAGMA table_info(oauth_codes)').all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'issued_family_id')) {
+        db.exec('ALTER TABLE oauth_codes ADD COLUMN issued_family_id TEXT;');
+      }
+    },
+  },
 ];
 
 /**

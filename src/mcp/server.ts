@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { OAuthAuthContext } from '../auth/middleware.js';
 import { registerAllMcpTools, type McpToolDeps } from './tools/index.js';
 
+export const DEFAULT_MAX_MCP_BODY_BYTES = 10 * 1024 * 1024;
 export const MCP_SERVER_VERSION = '0.3.0';
 
 export const MCP_SERVER_INSTRUCTIONS = [
@@ -19,6 +20,7 @@ export interface McpServerOptions {
   version?: string;
   instructions?: string;
   enableJsonResponse?: boolean;
+  maxBodyBytes?: number;
 }
 
 function registerWorkflowPrompts(server: McpServer): void {
@@ -216,9 +218,59 @@ export function isAllowedMcpOrigin(
   );
 }
 
+async function readBoundedMcpRequest(
+  rawReq: Request,
+  maxBytes: number,
+): Promise<{ ok: true; request: Request } | { ok: false }> {
+  const declaredHeader = rawReq.headers.get('content-length');
+  if (declaredHeader !== null) {
+    const declared = Number(declaredHeader);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      return { ok: false };
+    }
+  }
+
+  if (!rawReq.body) {
+    return { ok: true, request: rawReq };
+  }
+
+  const reader = rawReq.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return { ok: false };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const merged = Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)),
+  );
+  const headers = new Headers(rawReq.headers);
+  headers.set('content-length', String(merged.byteLength));
+  const reconstructed = new Request(rawReq.url, {
+    method: rawReq.method,
+    headers,
+    body: merged,
+  });
+  return { ok: true, request: reconstructed };
+}
+
 /**
  * Creates a stateless Streamable HTTP Hono handler for `/mcp`:
  * - Enforces Origin allowlist when `Origin` header is present (403 on disallowed browser Origins)
+ * - Enforces bounded request body size ceiling (413 Payload Too Large)
  * - POST /mcp -> WebStandardStreamableHTTPServerTransport (sessionIdGenerator: undefined)
  * - GET /mcp and DELETE /mcp -> 405 Method Not Allowed (no legacy HTTP+SSE)
  */
@@ -227,6 +279,7 @@ export function createMcpHttpHandler(
   options: McpServerOptions = {},
 ): (c: Context) => Promise<Response> {
   const enableJsonResponse = options.enableJsonResponse ?? true;
+  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_MCP_BODY_BYTES;
 
   return async (c: Context): Promise<Response> => {
     const originHeader = c.req.header('origin');
@@ -241,6 +294,10 @@ export function createMcpHttpHandler(
           id: null,
         },
         403,
+        {
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
       );
     }
 
@@ -257,7 +314,11 @@ export function createMcpHttpHandler(
           id: null,
         },
         405,
-        { Allow: 'POST' },
+        {
+          Allow: 'POST',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
       );
     }
 
@@ -272,7 +333,30 @@ export function createMcpHttpHandler(
           id: null,
         },
         405,
-        { Allow: 'POST' },
+        {
+          Allow: 'POST',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      );
+    }
+
+    const bounded = await readBoundedMcpRequest(c.req.raw, maxBodyBytes);
+    if (!bounded.ok) {
+      return c.json(
+        {
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: `Request body exceeds maximum allowed size (${maxBodyBytes} bytes).`,
+          },
+          id: null,
+        },
+        413,
+        {
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
       );
     }
 
@@ -285,8 +369,9 @@ export function createMcpHttpHandler(
 
     await server.connect(transport);
 
+    let shouldClose = enableJsonResponse;
     try {
-      const response = await transport.handleRequest(c.req.raw, {
+      const response = await transport.handleRequest(bounded.request, {
         ...(oauthAuth
           ? {
               authInfo: {
@@ -297,9 +382,23 @@ export function createMcpHttpHandler(
             }
           : {}),
       });
-      return response;
+      const headers = new Headers(response.headers);
+      if (!headers.has('cache-control')) {
+        headers.set('cache-control', 'no-store');
+      }
+      if (!headers.has('x-content-type-options')) {
+        headers.set('x-content-type-options', 'nosniff');
+      }
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    } catch (err) {
+      shouldClose = true;
+      throw err;
     } finally {
-      if (enableJsonResponse) {
+      if (shouldClose) {
         await Promise.allSettled([transport.close(), server.close()]);
       }
     }

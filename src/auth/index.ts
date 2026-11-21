@@ -1,6 +1,4 @@
 import { Hono } from 'hono';
-import type { OAuthRepository } from '../db/repositories/oauthRepo.js';
-import type { Repositories } from '../db/repositories/index.js';
 import type { GatewayDatabase } from '../db/sqlite.js';
 import type { GatewayConfig } from '../types.js';
 import { createAuthorizeRoutes } from './authorize.js';
@@ -13,14 +11,27 @@ import {
   type OAuthAuthContext,
 } from './middleware.js';
 import { IpRateLimiter, MAX_AUTH_BODY_BYTES, getClientIp, readLimitedBodyText } from './rateLimit.js';
+import {
+  DEFAULT_ADMIN_SESSION_TTL_MS,
+  InMemoryOAuthStore,
+  SignedCookieAdminSessionManager,
+  type AdminSessionManager,
+  type AuditLogger,
+  type OAuthStore,
+  type RateLimiter,
+} from './store.js';
 import { createTokenRoutes } from './token.js';
 import { createUpstreamIdpRoutes } from './upstreamIdp.js';
 
 export interface AuthDeps {
   config: GatewayConfig;
   db?: GatewayDatabase;
-  repos: Pick<Repositories, 'oauth' | 'audit'>;
+  oauthStore?: OAuthStore;
+  auditLogger?: AuditLogger;
+  sessionManager?: AdminSessionManager;
+  repos?: { oauth: OAuthStore; audit?: AuditLogger };
   upstreamFetch?: typeof fetch;
+  rateLimiter?: RateLimiter;
   rateLimitMaxAttempts?: number;
   rateLimitWindowMs?: number;
 }
@@ -29,31 +40,38 @@ export interface AuthDeps {
  * Creates the Hono sub-app mounting OAuth 2.1 discovery, DCR, authorize, token, and revoke routes.
  */
 export function createAuthApp(deps: AuthDeps): Hono {
-  const { config, db, repos } = deps;
+  const { config, db } = deps;
+  const oauthStore = deps.oauthStore ?? deps.repos?.oauth;
+  if (!oauthStore) {
+    throw new Error('createAuthApp requires oauthStore or repos.oauth');
+  }
+  const auditLogger = deps.auditLogger ?? deps.repos?.audit;
   const app = new Hono();
 
-  ensureStaticClient(config, repos.oauth);
+  ensureStaticClient(config, oauthStore);
 
-  const authorizeRateLimiter = new IpRateLimiter(
-    deps.rateLimitMaxAttempts ?? 10,
-    deps.rateLimitWindowMs ?? 60_000,
-  );
+  const authorizeRateLimiter =
+    deps.rateLimiter ??
+    new IpRateLimiter(
+      deps.rateLimitMaxAttempts ?? 10,
+      deps.rateLimitWindowMs ?? 60_000,
+    );
 
   app.route('/', createDiscoveryRoutes(config));
   app.route(
     '/',
     createDcrRoutes({
       config,
-      oauthRepo: repos.oauth,
-      auditRepo: repos.audit,
+      oauthStore,
+      auditLogger,
     }),
   );
   app.route(
     '/',
     createAuthorizeRoutes({
       config,
-      oauthRepo: repos.oauth,
-      auditRepo: repos.audit,
+      oauthStore,
+      auditLogger,
       rateLimiter: authorizeRateLimiter,
     }),
   );
@@ -62,16 +80,17 @@ export function createAuthApp(deps: AuthDeps): Hono {
     createTokenRoutes({
       config,
       db,
-      oauthRepo: repos.oauth,
-      auditRepo: repos.audit,
+      oauthStore,
+      auditLogger,
     }),
   );
   app.route(
     '/',
     createUpstreamIdpRoutes({
       config,
-      oauthRepo: repos.oauth,
-      auditRepo: repos.audit,
+      oauthStore,
+      auditLogger,
+      sessionManager: deps.sessionManager,
       upstreamFetch: deps.upstreamFetch,
     }),
   );
@@ -83,16 +102,30 @@ export function createAuthApp(deps: AuthDeps): Hono {
  * Creates the `/mcp` OAuth 2.1 Bearer token validation middleware from AuthDeps or BearerMiddlewareDeps.
  */
 export function createBearerMiddleware(
-  deps: Pick<AuthDeps, 'config'> & ({ repos: Pick<Repositories, 'oauth'> } | { oauthRepo: OAuthRepository }),
+  deps: {
+    config: GatewayConfig;
+    oauthStore?: Pick<OAuthStore, 'getTokenByHash'>;
+    oauthRepo?: Pick<OAuthStore, 'getTokenByHash'>;
+    repos?: { oauth: Pick<OAuthStore, 'getTokenByHash'> };
+  },
 ) {
-  const oauthRepo = 'oauthRepo' in deps ? deps.oauthRepo : deps.repos.oauth;
+  const oauthStore = deps.oauthStore ?? deps.oauthRepo ?? deps.repos?.oauth;
+  if (!oauthStore) {
+    throw new Error('createBearerMiddleware requires oauthStore, oauthRepo, or repos.oauth');
+  }
   return buildBearerMiddleware({
     config: deps.config,
-    oauthRepo,
+    oauthStore,
   });
 }
 
-export type { BearerMiddlewareDeps };
+export type {
+  BearerMiddlewareDeps,
+  OAuthStore,
+  AuditLogger,
+  RateLimiter,
+  AdminSessionManager,
+};
 
 export {
   ensureStaticClient,
@@ -101,6 +134,9 @@ export {
   getCanonicalResource,
   buildWwwAuthenticateHeader,
   IpRateLimiter,
+  InMemoryOAuthStore,
+  SignedCookieAdminSessionManager,
+  DEFAULT_ADMIN_SESSION_TTL_MS,
   MAX_AUTH_BODY_BYTES,
   getClientIp,
   readLimitedBodyText,

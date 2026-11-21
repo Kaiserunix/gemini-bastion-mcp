@@ -1,8 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { isGitHubOAuthEnabled, isGoogleOAuthEnabled } from '../config.js';
-import type { AuditRepository } from '../db/repositories/auditRepo.js';
-import type { OAuthRepository } from '../db/repositories/oauthRepo.js';
 import type { GatewayConfig, OAuthAuthRequest, OAuthClient } from '../types.js';
 import { clearMcpAuthBindCookie, setMcpAuthBindCookie } from './cookies.js';
 import {
@@ -14,6 +12,7 @@ import {
 import { isAllowedRedirectUri } from './dcr.js';
 import { DEFAULT_SCOPES_SUPPORTED, getCanonicalResource, isValidResource } from './discovery.js';
 import { getClientIp, IpRateLimiter, readLimitedBodyText } from './rateLimit.js';
+import type { AuditLogger, OAuthStore, RateLimiter } from './store.js';
 
 export const MAX_STATE_BYTES = 8192;
 export const AUTH_REQUEST_TTL_MS = 10 * 60 * 1000;
@@ -23,10 +22,18 @@ const PKCE_CHALLENGE_REGEX = /^[A-Za-z0-9\-_]{43,128}$/;
 
 export interface AuthorizeDeps {
   config: GatewayConfig;
-  oauthRepo: OAuthRepository;
-  auditRepo?: AuditRepository;
-  rateLimiter?: IpRateLimiter;
-  getRateLimiter?: IpRateLimiter;
+  oauthStore?: Pick<
+    OAuthStore,
+    'getClient' | 'createAuthRequest' | 'getAuthRequest' | 'consumeAuthRequest' | 'createCode'
+  >;
+  oauthRepo?: Pick<
+    OAuthStore,
+    'getClient' | 'createAuthRequest' | 'getAuthRequest' | 'consumeAuthRequest' | 'createCode'
+  >;
+  auditRepo?: AuditLogger;
+  auditLogger?: AuditLogger;
+  rateLimiter?: RateLimiter;
+  getRateLimiter?: RateLimiter;
 }
 
 function escapeHtml(value: string): string {
@@ -413,7 +420,12 @@ function redirectWithOAuthError(
  * Mounts `GET /oauth/authorize` and `POST /oauth/authorize`.
  */
 export function createAuthorizeRoutes(deps: AuthorizeDeps): Hono {
-  const { config, oauthRepo, auditRepo } = deps;
+  const { config } = deps;
+  const oauthRepo = deps.oauthStore ?? deps.oauthRepo;
+  if (!oauthRepo) {
+    throw new Error('createAuthorizeRoutes requires oauthStore or oauthRepo');
+  }
+  const auditRepo = deps.auditLogger ?? deps.auditRepo;
   const rateLimiter = deps.rateLimiter ?? new IpRateLimiter(10, 60_000);
   const getRateLimiter = deps.getRateLimiter ?? new IpRateLimiter(60, 60_000);
   const allowedScopes = new Set<string>(DEFAULT_SCOPES_SUPPORTED);

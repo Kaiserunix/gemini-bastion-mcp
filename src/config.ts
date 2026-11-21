@@ -13,6 +13,8 @@ const DEFAULT_ALLOWED_REDIRECT_HOSTS = [
   'gemini.google.com',
   'aistudio.google.com',
   'accounts.google.com',
+  'claude.ai',
+  'chatgpt.com',
   'localhost',
   '127.0.0.1',
 ];
@@ -161,6 +163,14 @@ const envSchema = z.object({
   WORKSPACE_EXEC_DEFAULT_WAIT_MS: z.coerce.number().int().min(500).max(15000).default(12000),
   WORKSPACE_EXEC_MAX_WAIT_MS: z.coerce.number().int().min(1000).max(15000).default(15000),
   MUTATION_PLAN_TTL_SEC: z.coerce.number().int().min(60).max(86400).default(900),
+
+  AUDIT_LOG_FILE_PATH: z.string().optional().transform(emptyToUndefined),
+  MCP_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).max(100000).default(300),
+  MCP_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).max(3600000).default(60000),
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(1000).default(5),
+  CIRCUIT_BREAKER_RESET_TIMEOUT_MS: z.coerce.number().int().min(500).max(600000).default(30000),
+  SECURITY_POLICY_JSON: z.string().optional().transform(emptyToUndefined),
+  SECURITY_POLICY_FILE: z.string().optional().transform(emptyToUndefined),
 
   SANDBOX_UID: optionalIntSchema,
   SANDBOX_GID: optionalIntSchema,
@@ -327,6 +337,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   const resolvedArtifacts = path.resolve(artifactsDir);
   const resolvedWorkspaces = path.resolve(workspacesDir);
+  const auditLogFilePath = parsed.AUDIT_LOG_FILE_PATH
+    ? path.resolve(parsed.AUDIT_LOG_FILE_PATH)
+    : undefined;
 
   const canonWorkspaces = canonicalizeWithAncestor(resolvedWorkspaces);
   const protectedTargets: Array<[string, string]> = [
@@ -335,6 +348,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   ];
   if (databasePath !== ':memory:') {
     protectedTargets.push(['DATABASE_PATH', databasePath]);
+  }
+  if (auditLogFilePath) {
+    protectedTargets.push(['AUDIT_LOG_FILE_PATH', auditLogFilePath]);
   }
   for (const [label, target] of protectedTargets) {
     if (pathsOverlap(canonicalizeWithAncestor(target), canonWorkspaces)) {
@@ -401,6 +417,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ),
     workspaceExecMaxWaitMs: parsed.WORKSPACE_EXEC_MAX_WAIT_MS,
     mutationPlanTtlSec: parsed.MUTATION_PLAN_TTL_SEC,
+
+    auditLogFilePath,
+    mcpRateLimitMaxRequests: parsed.MCP_RATE_LIMIT_MAX_REQUESTS,
+    mcpRateLimitWindowMs: parsed.MCP_RATE_LIMIT_WINDOW_MS,
+    circuitBreakerFailureThreshold: parsed.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    circuitBreakerResetTimeoutMs: parsed.CIRCUIT_BREAKER_RESET_TIMEOUT_MS,
+    securityPolicyJson: parsed.SECURITY_POLICY_JSON,
+    securityPolicyFile: parsed.SECURITY_POLICY_FILE,
 
     sandboxUid: parsed.SANDBOX_UID,
     sandboxGid: parsed.SANDBOX_GID,

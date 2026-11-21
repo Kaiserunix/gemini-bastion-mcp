@@ -2,13 +2,22 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { estimateTokens } from '../db/repositories/usageRepo.js';
+import {
+  defaultApprovalGatePolicy,
+  type ApprovalGatePolicy,
+  type RequiredMcpScope,
+} from '../policy/index.js';
+import {
+  extractToolPolicyContext,
+  type PolicyEvaluatorPort,
+} from '../security/policyEvaluator.js';
 import type { McpToolResult, ScrubberLike } from '../types.js';
 
 export const DEFAULT_MAX_OUTPUT_BYTES = 60_000;
 export const DEFAULT_HEAD_BYTES = 25_000;
 export const DEFAULT_TAIL_BYTES = 25_000;
 
-export type McpRequiredScope = 'read' | 'write';
+export type McpRequiredScope = RequiredMcpScope;
 
 export interface ToolUsageMetric {
   toolName: string;
@@ -26,12 +35,16 @@ export interface GuardTextOutputOptions {
   artifactsDir: string;
   workspacesDir?: string;
   label?: string;
+  toolName?: string;
+  defaultActor?: string;
+  defaultBranchResolver?: (workspaceSlug: string) => string | undefined;
+  policyEvaluator?: PolicyEvaluatorPort;
   maxBytes?: number;
   headBytes?: number;
   tailBytes?: number;
   untrustedSource?: string;
   requiredScope?: McpRequiredScope;
-  toolName?: string;
+  policy?: ApprovalGatePolicy;
   onToolUsage?: (metric: ToolUsageMetric) => void;
 }
 
@@ -298,16 +311,6 @@ function extractRawTextAndErrorFlag(raw: unknown): { text: string; isError: bool
   return { text: String(raw ?? ''), isError: false };
 }
 
-function hasSufficientScope(scopes: string[], required: McpRequiredScope): boolean {
-  if (scopes.includes('mcp:tools') || scopes.includes('mcp:write')) {
-    return true;
-  }
-  if (required === 'read') {
-    return scopes.includes('mcp:read');
-  }
-  return false;
-}
-
 function safeSerializeArgs(args: unknown): string {
   if (args === undefined || args === null) return '';
   try {
@@ -319,7 +322,8 @@ function safeSerializeArgs(args: unknown): string {
 
 /**
  * Higher-order MCP tool handler wrapper guaranteeing:
- * 1. OAuth scope enforcement (`mcp:tools`/`mcp:write` vs `mcp:read`) when `extra.authInfo.scopes` is present.
+ * 1. OAuth scope enforcement via `ApprovalGatePolicy` (`mcp:tools`/`mcp:write` vs `mcp:read`)
+ *    whenever `extra.authInfo` is present (fail-closed if `scopes` is absent/empty).
  * 2. Output is ALWAYS `{ content: [{ type: "text", text }] }` (never relying on structuredContent).
  * 3. Secrets are scrubbed and oversized outputs are offloaded via `guardTextOutput`.
  * 4. Thrown errors are caught cleanly into `{ content: [{ type: "text", text }], isError: true }`.
@@ -360,16 +364,42 @@ export function withMcpGuardrails<TArgs = unknown, TExtra extends McpHandlerExtr
         ? requiredScope(args)
         : (requiredScope ?? guardOpts.requiredScope);
 
-    const scopes = extra?.authInfo?.scopes;
-    if (effectiveScope && Array.isArray(scopes)) {
-      if (!hasSufficientScope(scopes, effectiveScope)) {
-        const msg = guardTextOutput(
-          `Error: insufficient_scope — "${effectiveScope}" operation requires "mcp:tools" or "mcp:write" scope (granted: ${scopes.join(' ') || 'none'}).`,
-          { ...guardOpts, untrustedSource: undefined },
-        );
+    if (effectiveScope && extra?.authInfo !== undefined) {
+      const scopes = Array.isArray(extra.authInfo.scopes) ? extra.authInfo.scopes : [];
+      const policy = guardOpts.policy ?? defaultApprovalGatePolicy;
+      const decision = policy.evaluateScope(scopes, effectiveScope);
+      if (!decision.allowed) {
+        const msg = guardTextOutput(`Error: insufficient_scope — ${decision.reason}`, {
+          ...guardOpts,
+          untrustedSource: undefined,
+        });
         emitUsage('error', msg);
         return {
           content: [{ type: 'text', text: msg }],
+          isError: true,
+        };
+      }
+    }
+
+    if (guardOpts.policyEvaluator && guardOpts.toolName) {
+      const policyCtx = extractToolPolicyContext(
+        guardOpts.toolName,
+        args,
+        extra,
+        guardOpts.defaultActor ?? 'mcp-operator',
+      );
+      if (policyCtx.workspaceSlug && guardOpts.defaultBranchResolver) {
+        policyCtx.defaultBranch = guardOpts.defaultBranchResolver(policyCtx.workspaceSlug);
+      }
+      const decision = guardOpts.policyEvaluator.evaluate(policyCtx);
+      if (!decision.allowed) {
+        const deniedMsg = guardTextOutput(
+          `Error: [${decision.matchedRuleId ?? decision.effect}] ${decision.reason}`,
+          { ...guardOpts, untrustedSource: undefined },
+        );
+        emitUsage('error', deniedMsg);
+        return {
+          content: [{ type: 'text', text: deniedMsg }],
           isError: true,
         };
       }

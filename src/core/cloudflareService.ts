@@ -3,9 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Cloudflare from 'cloudflare';
 import { z } from 'zod';
-import type { AuditRepository } from '../db/repositories/auditRepo.js';
-import type { PlanRepository } from '../db/repositories/planRepo.js';
+import type { AuditLogger } from '../auth/store.js';
 import { wrapUntrustedData } from '../mcp/outputGuard.js';
+import {
+  defaultApprovalGatePolicy,
+  type ApprovalGatePolicy,
+  type MutationTargetAdapter,
+  type PlanStore,
+} from '../policy/index.js';
 import type { GatewayConfig, MutationPlanRecord, ScrubberLike } from '../types.js';
 import { buildSandboxedEnv, runSubprocess, type ExecResult } from '../utils/exec.js';
 import { SecretScrubber } from '../utils/secretScrubber.js';
@@ -64,6 +69,20 @@ export interface CloudflareClientLike {
         get(scriptName: string, params: { account_id: string }): Promise<unknown>;
       };
     };
+    routes?: {
+      list(params: { zone_id: string }): AsyncIterable<Record<string, unknown>> | Promise<unknown>;
+      get(routeID: string, params: { zone_id: string }): Promise<Record<string, unknown>>;
+      create(params: {
+        zone_id: string;
+        pattern: string;
+        script?: string;
+      }): Promise<Record<string, unknown>>;
+      update(
+        routeID: string,
+        params: { zone_id: string; pattern: string; script?: string },
+      ): Promise<Record<string, unknown>>;
+      delete(routeID: string, params: { zone_id: string }): Promise<unknown>;
+    };
   };
   pages: {
     projects: {
@@ -85,6 +104,27 @@ export interface CloudflareClientLike {
           namespaceID: string,
           params: { account_id: string },
         ): AsyncIterable<Record<string, unknown>> | Promise<unknown>;
+      };
+      values?: {
+        get(
+          keyName: string,
+          params: { account_id: string; namespace_id: string },
+        ): Promise<Response | string | { text(): Promise<string> }>;
+        update(
+          keyName: string,
+          params: {
+            account_id: string;
+            namespace_id: string;
+            value: string;
+            expiration?: number;
+            expiration_ttl?: number;
+            metadata?: unknown;
+          },
+        ): Promise<unknown>;
+        delete(
+          keyName: string,
+          params: { account_id: string; namespace_id: string },
+        ): Promise<unknown>;
       };
     };
   };
@@ -121,6 +161,7 @@ export interface CloudflareServiceOptions {
   accountId?: string;
   planTtlMs?: number;
   scrubber?: ScrubberLike;
+  policy?: ApprovalGatePolicy;
   readClient?: CloudflareClientLike;
   writeClient?: CloudflareClientLike;
   clientFactory?: (token: string, mode: 'read' | 'write') => CloudflareClientLike;
@@ -169,6 +210,40 @@ const stagePlanInputSchema = z.discriminatedUnion('type', [
     sql: z.string().min(1),
     params: z.array(z.string()).optional(),
     rollbackSql: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('kv_put'),
+    accountId: z.string().min(1).optional(),
+    namespaceId: z.string().min(1),
+    key: z.string().min(1),
+    value: z.string(),
+    expiration: z.number().int().positive().optional(),
+    expirationTtl: z.number().int().min(60).optional(),
+    metadata: z.record(z.unknown()).optional(),
+  }),
+  z.object({
+    type: z.literal('kv_delete'),
+    accountId: z.string().min(1).optional(),
+    namespaceId: z.string().min(1),
+    key: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('worker_route_create'),
+    zoneId: z.string().min(1),
+    pattern: z.string().min(1),
+    script: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('worker_route_update'),
+    zoneId: z.string().min(1),
+    routeId: z.string().min(1),
+    pattern: z.string().min(1),
+    script: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('worker_route_delete'),
+    zoneId: z.string().min(1),
+    routeId: z.string().min(1),
   }),
 ]);
 
@@ -392,6 +467,52 @@ function pickDnsFields(record: Record<string, unknown>): Record<string, unknown>
   return out;
 }
 
+function isCloudflareNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const record = err as { status?: unknown; statusCode?: unknown; message?: unknown };
+  if (record.status === 404 || record.statusCode === 404) return true;
+  if (typeof record.message === 'string' && /\b404\b|not found/i.test(record.message)) return true;
+  return false;
+}
+
+async function readKvValueText(
+  client: CloudflareClientLike,
+  accountId: string,
+  namespaceId: string,
+  key: string,
+): Promise<{ exists: boolean; value: string | null }> {
+  const valuesApi = client.kv.namespaces.values;
+  if (!valuesApi) {
+    throw new Error('Cloudflare client does not support KV values API.');
+  }
+  try {
+    const raw = await valuesApi.get(key, { account_id: accountId, namespace_id: namespaceId });
+    if (typeof raw === 'string') {
+      return { exists: true, value: raw };
+    }
+    if (raw && typeof raw === 'object' && 'status' in raw && (raw as Response).status === 404) {
+      return { exists: false, value: null };
+    }
+    if (raw && typeof raw === 'object' && 'text' in raw && typeof raw.text === 'function') {
+      return { exists: true, value: await raw.text() };
+    }
+    return { exists: true, value: String(raw ?? '') };
+  } catch (err) {
+    if (isCloudflareNotFoundError(err)) {
+      return { exists: false, value: null };
+    }
+    throw err;
+  }
+}
+
+function summarizeKvValue(value: string, scrubber: ScrubberLike): string {
+  const byteLen = Buffer.byteLength(value, 'utf8');
+  const scrubbed = scrubber.scrub(value);
+  const singleLine = scrubbed.replace(/[\r\n]+/g, ' ');
+  const preview = singleLine.length > 80 ? `${singleLine.slice(0, 80)}...` : singleLine;
+  return `${byteLen} bytes ("${preview}")`;
+}
+
 /**
  * Cloudflare platform service with read/write token separation,
  * read-only resource inspection, two-phase staged mutations with rollback snapshots,
@@ -403,6 +524,7 @@ export class CloudflareService {
   private readonly defaultAccountId?: string;
   private readonly planTtlMs: number;
   private readonly scrubber: ScrubberLike;
+  private readonly policy: ApprovalGatePolicy;
   private readonly readClientOverride?: CloudflareClientLike;
   private readonly writeClientOverride?: CloudflareClientLike;
   private readonly clientFactory?: (token: string, mode: 'read' | 'write') => CloudflareClientLike;
@@ -423,6 +545,7 @@ export class CloudflareService {
           (v): v is string => Boolean(v),
         ),
       });
+    this.policy = options.policy ?? defaultApprovalGatePolicy;
     this.readClientOverride = options.readClient;
     this.writeClientOverride = options.writeClient;
     this.clientFactory = options.clientFactory;
@@ -435,6 +558,7 @@ export class CloudflareService {
       'cloudflareApiToken' | 'cloudflareReadonlyApiToken' | 'cloudflareAccountId' | 'mutationPlanTtlSec'
     >,
     scrubber?: ScrubberLike,
+    policy?: ApprovalGatePolicy,
   ): CloudflareService {
     return new CloudflareService({
       apiToken: config.cloudflareApiToken,
@@ -442,6 +566,7 @@ export class CloudflareService {
       accountId: config.cloudflareAccountId,
       planTtlMs: config.mutationPlanTtlSec * 1000,
       scrubber,
+      policy,
     });
   }
 
@@ -773,11 +898,11 @@ export class CloudflareService {
 
   /**
    * Two-phase Mutation Plan Staging:
-   * Validates DNS/WAF/D1 mutation inputs, queries remote pre-change state to build
+   * Validates DNS/WAF/D1/KV/Worker-route mutation inputs, queries remote pre-change state to build
    * `rollback_payload_json`, generates `summary_diff_text`, and persists a 15-minute TTL plan.
    */
   async stageCloudflarePlan(
-    planRepo: PlanRepository,
+    planRepo: PlanStore,
     rawInput: StageCloudflarePlanInput,
   ): Promise<MutationPlanRecord> {
     const input = stagePlanInputSchema.parse(rawInput);
@@ -937,6 +1062,173 @@ export class CloudflareService {
           : null;
         break;
       }
+
+      case 'kv_put': {
+        const accountId = this.requireAccountId(input.accountId);
+        const existing = await readKvValueText(client, accountId, input.namespaceId, input.key);
+        summaryDiffText = [
+          `Cloudflare KV PUT in namespace ${input.namespaceId} (key=${input.key}):`,
+          existing.exists && existing.value !== null
+            ? `- Previous value: ${summarizeKvValue(existing.value, this.scrubber)}`
+            : '  Previous value: (key does not exist)',
+          `+ New value: ${summarizeKvValue(input.value, this.scrubber)}${
+            input.expirationTtl !== undefined ? ` (ttl=${input.expirationTtl}s)` : ''
+          }${input.expiration !== undefined ? ` (expiration=${input.expiration})` : ''}`,
+        ].join('\n');
+
+        payload = {
+          type: 'kv_put',
+          accountId,
+          namespaceId: input.namespaceId,
+          key: input.key,
+          value: input.value,
+          ...(input.expiration !== undefined ? { expiration: input.expiration } : {}),
+          ...(input.expirationTtl !== undefined ? { expirationTtl: input.expirationTtl } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        };
+        rollbackPayload =
+          existing.exists && existing.value !== null
+            ? {
+                action: 'kv_put',
+                accountId,
+                namespaceId: input.namespaceId,
+                key: input.key,
+                value: existing.value,
+              }
+            : {
+                action: 'kv_delete',
+                accountId,
+                namespaceId: input.namespaceId,
+                key: input.key,
+              };
+        break;
+      }
+
+      case 'kv_delete': {
+        const accountId = this.requireAccountId(input.accountId);
+        const existing = await readKvValueText(client, accountId, input.namespaceId, input.key);
+        if (!existing.exists || existing.value === null) {
+          throw new Error(
+            `KV key "${input.key}" not found in namespace ${input.namespaceId}.`,
+          );
+        }
+        summaryDiffText = [
+          `Cloudflare KV DELETE in namespace ${input.namespaceId} (key=${input.key}):`,
+          `- Existing value: ${summarizeKvValue(existing.value, this.scrubber)}`,
+        ].join('\n');
+
+        payload = {
+          type: 'kv_delete',
+          accountId,
+          namespaceId: input.namespaceId,
+          key: input.key,
+        };
+        rollbackPayload = {
+          action: 'kv_put',
+          accountId,
+          namespaceId: input.namespaceId,
+          key: input.key,
+          value: existing.value,
+        };
+        break;
+      }
+
+      case 'worker_route_create': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        const existing = await collectItems(routesApi.list({ zone_id: input.zoneId }), 50);
+        const conflictCount = existing.filter(
+          (r) => String(r.pattern ?? '') === input.pattern,
+        ).length;
+        summaryDiffText = [
+          `Cloudflare Worker Route CREATE in zone ${input.zoneId}:`,
+          `  Existing routes matching pattern: ${conflictCount}`,
+          `+ pattern=${input.pattern} -> script=${input.script ?? '(disabled/none)'}`,
+        ].join('\n');
+        payload = {
+          type: 'worker_route_create',
+          zoneId: input.zoneId,
+          pattern: input.pattern,
+          ...(input.script !== undefined ? { script: input.script } : {}),
+        };
+        rollbackPayload = {
+          action: 'worker_route_delete_created',
+          zoneId: input.zoneId,
+          pattern: input.pattern,
+          ...(input.script !== undefined ? { script: input.script } : {}),
+        };
+        break;
+      }
+
+      case 'worker_route_update': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        const existing = await routesApi.get(input.routeId, { zone_id: input.zoneId });
+        if (!existing || !existing.id) {
+          throw new Error(`Worker route ${input.routeId} not found in zone ${input.zoneId}.`);
+        }
+        const prevPattern = String(existing.pattern ?? '');
+        const prevScript =
+          typeof existing.script === 'string' && existing.script.length > 0
+            ? existing.script
+            : undefined;
+        summaryDiffText = [
+          `Cloudflare Worker Route UPDATE in zone ${input.zoneId} (route=${input.routeId}):`,
+          `- pattern=${prevPattern} -> script=${prevScript ?? '(disabled/none)'}`,
+          `+ pattern=${input.pattern} -> script=${input.script ?? '(disabled/none)'}`,
+        ].join('\n');
+        payload = {
+          type: 'worker_route_update',
+          zoneId: input.zoneId,
+          routeId: input.routeId,
+          pattern: input.pattern,
+          ...(input.script !== undefined ? { script: input.script } : {}),
+        };
+        rollbackPayload = {
+          action: 'worker_route_update',
+          zoneId: input.zoneId,
+          routeId: input.routeId,
+          pattern: prevPattern,
+          ...(prevScript !== undefined ? { script: prevScript } : {}),
+        };
+        break;
+      }
+
+      case 'worker_route_delete': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        const existing = await routesApi.get(input.routeId, { zone_id: input.zoneId });
+        if (!existing || !existing.id) {
+          throw new Error(`Worker route ${input.routeId} not found in zone ${input.zoneId}.`);
+        }
+        const prevPattern = String(existing.pattern ?? '');
+        const prevScript =
+          typeof existing.script === 'string' && existing.script.length > 0
+            ? existing.script
+            : undefined;
+        summaryDiffText = [
+          `Cloudflare Worker Route DELETE in zone ${input.zoneId} (route=${input.routeId}):`,
+          `- pattern=${prevPattern} -> script=${prevScript ?? '(disabled/none)'}`,
+        ].join('\n');
+        payload = {
+          type: 'worker_route_delete',
+          zoneId: input.zoneId,
+          routeId: input.routeId,
+        };
+        rollbackPayload = {
+          action: 'worker_route_create',
+          zoneId: input.zoneId,
+          pattern: prevPattern,
+          ...(prevScript !== undefined ? { script: prevScript } : {}),
+        };
+        break;
+      }
     }
 
     return planRepo.createPlan({
@@ -1036,17 +1328,385 @@ export class CloudflareService {
     };
   }
 
+  private async executePayloadWithClient(
+    client: CloudflareClientLike,
+    plan: MutationPlanRecord,
+  ): Promise<{
+    type: string;
+    apiResult: unknown;
+    updatedRollbackPayload?: Record<string, unknown> | null;
+  }> {
+    const payload = plan.payload;
+    const type = String(payload.type ?? '');
+    let apiResult: unknown;
+    let updatedRollbackPayload: Record<string, unknown> | null | undefined;
+
+    switch (type) {
+      case 'dns_record_create': {
+        const rec = payload.record as Record<string, unknown>;
+        const created = await client.dns.records.create({
+          zone_id: String(payload.zoneId),
+          ...rec,
+        });
+        apiResult = created;
+        if (created && typeof created === 'object' && 'id' in created && created.id) {
+          updatedRollbackPayload = {
+            ...(plan.rollback_payload ?? {}),
+            action: 'dns_record_delete_created',
+            zoneId: String(payload.zoneId),
+            recordId: String(created.id),
+          };
+        }
+        break;
+      }
+      case 'dns_record_update': {
+        const rec = payload.record as Record<string, unknown>;
+        apiResult = await client.dns.records.update(String(payload.recordId), {
+          zone_id: String(payload.zoneId),
+          ...rec,
+        });
+        break;
+      }
+      case 'dns_record_delete': {
+        apiResult = await client.dns.records.delete(String(payload.recordId), {
+          zone_id: String(payload.zoneId),
+        });
+        break;
+      }
+      case 'waf_rule_update': {
+        const zoneId = String(payload.zoneId);
+        const rules = payload.rules as Array<Record<string, unknown>>;
+        const description = payload.description ? String(payload.description) : undefined;
+        if (payload.rulesetId) {
+          apiResult = await client.rulesets.update(String(payload.rulesetId), {
+            zone_id: zoneId,
+            ...(description ? { description } : {}),
+            rules,
+          });
+        } else {
+          apiResult = await client.rulesets.phases.update(
+            String(payload.phase ?? 'http_request_firewall_custom'),
+            {
+              zone_id: zoneId,
+              ...(description ? { description } : {}),
+              rules,
+            },
+          );
+        }
+        break;
+      }
+      case 'd1_sql_mutation': {
+        apiResult = await collectItems(
+          client.d1.database.query(String(payload.databaseId), {
+            account_id: String(payload.accountId),
+            sql: String(payload.sql),
+            params: Array.isArray(payload.params) ? (payload.params as string[]) : undefined,
+          }),
+        );
+        break;
+      }
+      case 'kv_put': {
+        const valuesApi = client.kv.namespaces.values;
+        if (!valuesApi) {
+          throw new Error('Cloudflare client does not support KV values API.');
+        }
+        apiResult = await valuesApi.update(String(payload.key), {
+          account_id: String(payload.accountId),
+          namespace_id: String(payload.namespaceId),
+          value: String(payload.value ?? ''),
+          ...(typeof payload.expiration === 'number' ? { expiration: payload.expiration } : {}),
+          ...(typeof payload.expirationTtl === 'number'
+            ? { expiration_ttl: payload.expirationTtl }
+            : {}),
+          ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
+        });
+        break;
+      }
+      case 'kv_delete': {
+        const valuesApi = client.kv.namespaces.values;
+        if (!valuesApi) {
+          throw new Error('Cloudflare client does not support KV values API.');
+        }
+        apiResult = await valuesApi.delete(String(payload.key), {
+          account_id: String(payload.accountId),
+          namespace_id: String(payload.namespaceId),
+        });
+        break;
+      }
+      case 'worker_route_create': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        const created = await routesApi.create({
+          zone_id: String(payload.zoneId),
+          pattern: String(payload.pattern),
+          ...(typeof payload.script === 'string' ? { script: payload.script } : {}),
+        });
+        apiResult = created;
+        if (created && typeof created === 'object' && 'id' in created && created.id) {
+          updatedRollbackPayload = {
+            ...(plan.rollback_payload ?? {}),
+            action: 'worker_route_delete_created',
+            zoneId: String(payload.zoneId),
+            routeId: String(created.id),
+          };
+        }
+        break;
+      }
+      case 'worker_route_update': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        apiResult = await routesApi.update(String(payload.routeId), {
+          zone_id: String(payload.zoneId),
+          pattern: String(payload.pattern),
+          ...(typeof payload.script === 'string' ? { script: payload.script } : {}),
+        });
+        break;
+      }
+      case 'worker_route_delete': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        apiResult = await routesApi.delete(String(payload.routeId), {
+          zone_id: String(payload.zoneId),
+        });
+        break;
+      }
+      default:
+        throw new Error(`Unsupported Cloudflare mutation payload type: "${type}"`);
+    }
+
+    return { type, apiResult, updatedRollbackPayload };
+  }
+
+  private async rollbackPayloadWithClient(
+    client: CloudflareClientLike,
+    rb: Record<string, unknown>,
+  ): Promise<{ action: string; apiResult: unknown }> {
+    const action = String(rb.action ?? '');
+    let apiResult: unknown;
+
+    switch (action) {
+      case 'dns_record_update': {
+        const rec = rb.record as Record<string, unknown>;
+        apiResult = await client.dns.records.update(String(rb.recordId), {
+          zone_id: String(rb.zoneId),
+          ...rec,
+        });
+        break;
+      }
+      case 'dns_record_create': {
+        const rec = rb.record as Record<string, unknown>;
+        apiResult = await client.dns.records.create({
+          zone_id: String(rb.zoneId),
+          ...rec,
+        });
+        break;
+      }
+      case 'dns_record_delete_created': {
+        const zoneId = String(rb.zoneId);
+        if (typeof rb.recordId === 'string' && rb.recordId.length > 0) {
+          apiResult = await client.dns.records.delete(rb.recordId, { zone_id: zoneId });
+          break;
+        }
+        const records = await collectItems(
+          client.dns.records.list({
+            zone_id: zoneId,
+            name: rb.name,
+            type: rb.type,
+          }),
+          20,
+        );
+        const match = records.find(
+          (r) =>
+            String(r.name ?? '') === String(rb.name) &&
+            String(r.type ?? '') === String(rb.type) &&
+            String(r.content ?? '') === String(rb.content),
+        );
+        if (!match?.id) {
+          throw new Error(
+            `Unable to locate created DNS record (${String(rb.type)} ${String(rb.name)}) for rollback deletion.`,
+          );
+        }
+        apiResult = await client.dns.records.delete(String(match.id), { zone_id: zoneId });
+        break;
+      }
+      case 'waf_rule_update': {
+        const zoneId = String(rb.zoneId);
+        const rules = rb.rules as Array<Record<string, unknown>>;
+        const description = rb.description ? String(rb.description) : undefined;
+        if (rb.rulesetId) {
+          apiResult = await client.rulesets.update(String(rb.rulesetId), {
+            zone_id: zoneId,
+            ...(description ? { description } : {}),
+            rules,
+          });
+        } else {
+          apiResult = await client.rulesets.phases.update(
+            String(rb.phase ?? 'http_request_firewall_custom'),
+            {
+              zone_id: zoneId,
+              ...(description ? { description } : {}),
+              rules,
+            },
+          );
+        }
+        break;
+      }
+      case 'd1_sql_mutation': {
+        apiResult = await collectItems(
+          client.d1.database.query(String(rb.databaseId), {
+            account_id: String(rb.accountId),
+            sql: String(rb.sql),
+          }),
+        );
+        break;
+      }
+      case 'kv_put': {
+        const valuesApi = client.kv.namespaces.values;
+        if (!valuesApi) {
+          throw new Error('Cloudflare client does not support KV values API.');
+        }
+        apiResult = await valuesApi.update(String(rb.key), {
+          account_id: String(rb.accountId),
+          namespace_id: String(rb.namespaceId),
+          value: String(rb.value ?? ''),
+        });
+        break;
+      }
+      case 'kv_delete': {
+        const valuesApi = client.kv.namespaces.values;
+        if (!valuesApi) {
+          throw new Error('Cloudflare client does not support KV values API.');
+        }
+        apiResult = await valuesApi.delete(String(rb.key), {
+          account_id: String(rb.accountId),
+          namespace_id: String(rb.namespaceId),
+        });
+        break;
+      }
+      case 'worker_route_create': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        apiResult = await routesApi.create({
+          zone_id: String(rb.zoneId),
+          pattern: String(rb.pattern),
+          ...(typeof rb.script === 'string' ? { script: rb.script } : {}),
+        });
+        break;
+      }
+      case 'worker_route_update': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        apiResult = await routesApi.update(String(rb.routeId), {
+          zone_id: String(rb.zoneId),
+          pattern: String(rb.pattern),
+          ...(typeof rb.script === 'string' ? { script: rb.script } : {}),
+        });
+        break;
+      }
+      case 'worker_route_delete_created': {
+        const routesApi = client.workers.routes;
+        if (!routesApi) {
+          throw new Error('Cloudflare client does not support Worker routes API.');
+        }
+        const zoneId = String(rb.zoneId);
+        if (typeof rb.routeId === 'string' && rb.routeId.length > 0) {
+          apiResult = await routesApi.delete(rb.routeId, { zone_id: zoneId });
+          break;
+        }
+        const routes = await collectItems(routesApi.list({ zone_id: zoneId }), 50);
+        const match = routes.find((r) => String(r.pattern ?? '') === String(rb.pattern));
+        if (!match?.id) {
+          throw new Error(
+            `Unable to locate created Worker route (${String(rb.pattern)}) for rollback deletion.`,
+          );
+        }
+        apiResult = await routesApi.delete(String(match.id), { zone_id: zoneId });
+        break;
+      }
+      default:
+        throw new Error(`Unsupported rollback action: "${action}"`);
+    }
+
+    return { action, apiResult };
+  }
+
+  /**
+   * Returns a typed `MutationTargetAdapter` for wiring into `MutationPlanGate`.
+   */
+  asMutationTargetAdapter(): MutationTargetAdapter {
+    return {
+      targetPrefix: 'cloudflare',
+      auditActionPrefix: 'cloudflare',
+      matchesTargetService: (targetService: string) => targetService === 'cloudflare',
+      executeStagedPayload: async (plan: MutationPlanRecord) => {
+        const client = this.getWriteClient();
+        const { type, apiResult, updatedRollbackPayload } = await this.executePayloadWithClient(
+          client,
+          plan,
+        );
+        return {
+          result: this.scrubber.scrubObject(apiResult),
+          auditTarget: plan.plan_id,
+          auditDetails: { type },
+          updatedRollbackPayload,
+        };
+      },
+      rollbackExecutedPayload: async (plan: MutationPlanRecord) => {
+        const client = this.getWriteClient();
+        if (!plan.rollback_payload) {
+          throw new Error(`Plan "${plan.plan_id}" has no rollback_payload stored.`);
+        }
+        const { action, apiResult } = await this.rollbackPayloadWithClient(
+          client,
+          plan.rollback_payload,
+        );
+        return {
+          result: this.scrubber.scrubObject(apiResult),
+          auditTarget: plan.plan_id,
+          auditDetails: { rollbackAction: action },
+        };
+      },
+    };
+  }
+
   /**
    * Executes a previously staged Cloudflare mutation plan.
-   * Rejects missing, already-executed, or expired plan_id atomically.
+   * Rejects missing, wrong-target, already-executed, or expired plan_id atomically
+   * without corrupting non-Cloudflare plans.
    */
   async executeStagedCloudflarePlan(
-    planRepo: PlanRepository,
-    auditRepo: AuditRepository,
+    planRepo: PlanStore,
+    auditRepo: AuditLogger,
     planId: string,
     actor = 'system',
   ): Promise<ExecutePlanResult> {
     const client = this.getWriteClient();
+
+    const preview = planRepo.getPlan(planId);
+    const preDecision = this.policy.evaluatePlanExecution(preview, {
+      expectedTargetPrefix: 'cloudflare',
+    });
+    if (!preDecision.allowed && preDecision.code === 'PLAN_TARGET_MISMATCH') {
+      auditRepo.record({
+        actor,
+        action: 'cloudflare.execute_plan',
+        target: planId,
+        status: 'denied',
+        details: { error: `Wrong target_service: ${preview?.target_service ?? 'unknown'}` },
+      });
+      throw new Error(preDecision.reason);
+    }
+
     const claim = planRepo.claimForExecution(planId);
 
     if (!claim.ok) {
@@ -1069,12 +1729,12 @@ export class CloudflareService {
 
     const plan = claim.plan;
     if (plan.target_service !== 'cloudflare') {
-      planRepo.updatePlanStatus(planId, 'failed');
+      planRepo.updatePlanStatus(planId, 'staged');
       auditRepo.record({
         actor,
         action: 'cloudflare.execute_plan',
         target: planId,
-        status: 'failure',
+        status: 'denied',
         details: { error: `Wrong target_service: ${plan.target_service}` },
       });
       throw new Error(
@@ -1083,67 +1743,12 @@ export class CloudflareService {
     }
 
     try {
-      const payload = plan.payload;
-      const type = String(payload.type ?? '');
-      let apiResult: unknown;
-
-      switch (type) {
-        case 'dns_record_create': {
-          const rec = payload.record as Record<string, unknown>;
-          apiResult = await client.dns.records.create({
-            zone_id: String(payload.zoneId),
-            ...rec,
-          });
-          break;
-        }
-        case 'dns_record_update': {
-          const rec = payload.record as Record<string, unknown>;
-          apiResult = await client.dns.records.update(String(payload.recordId), {
-            zone_id: String(payload.zoneId),
-            ...rec,
-          });
-          break;
-        }
-        case 'dns_record_delete': {
-          apiResult = await client.dns.records.delete(String(payload.recordId), {
-            zone_id: String(payload.zoneId),
-          });
-          break;
-        }
-        case 'waf_rule_update': {
-          const zoneId = String(payload.zoneId);
-          const rules = payload.rules as Array<Record<string, unknown>>;
-          const description = payload.description ? String(payload.description) : undefined;
-          if (payload.rulesetId) {
-            apiResult = await client.rulesets.update(String(payload.rulesetId), {
-              zone_id: zoneId,
-              ...(description ? { description } : {}),
-              rules,
-            });
-          } else {
-            apiResult = await client.rulesets.phases.update(
-              String(payload.phase ?? 'http_request_firewall_custom'),
-              {
-                zone_id: zoneId,
-                ...(description ? { description } : {}),
-                rules,
-              },
-            );
-          }
-          break;
-        }
-        case 'd1_sql_mutation': {
-          apiResult = await collectItems(
-            client.d1.database.query(String(payload.databaseId), {
-              account_id: String(payload.accountId),
-              sql: String(payload.sql),
-              params: Array.isArray(payload.params) ? (payload.params as string[]) : undefined,
-            }),
-          );
-          break;
-        }
-        default:
-          throw new Error(`Unsupported Cloudflare mutation payload type: "${type}"`);
+      const { type, apiResult, updatedRollbackPayload } = await this.executePayloadWithClient(
+        client,
+        plan,
+      );
+      if (updatedRollbackPayload !== undefined) {
+        planRepo.updatePlanRollbackPayload(planId, updatedRollbackPayload);
       }
 
       const cleanResult = this.scrubber.scrubObject(apiResult);
@@ -1180,12 +1785,31 @@ export class CloudflareService {
    * and marks it `rolled_back` with an audit log record.
    */
   async rollbackExecutedPlan(
-    planRepo: PlanRepository,
-    auditRepo: AuditRepository,
+    planRepo: PlanStore,
+    auditRepo: AuditLogger,
     planId: string,
     actor = 'system',
   ): Promise<RollbackPlanResult> {
     const client = this.getWriteClient();
+
+    const preview = planRepo.getPlan(planId);
+    const preDecision = this.policy.evaluatePlanRollback(preview, {
+      expectedTargetPrefix: 'cloudflare',
+    });
+    if (
+      !preDecision.allowed &&
+      (preDecision.code === 'PLAN_TARGET_MISMATCH' || preDecision.code === 'PLAN_NO_ROLLBACK')
+    ) {
+      auditRepo.record({
+        actor,
+        action: 'cloudflare.rollback_plan',
+        target: planId,
+        status: 'denied',
+        details: { code: preDecision.code, reason: preDecision.reason },
+      });
+      throw new Error(preDecision.reason);
+    }
+
     const claim = planRepo.claimForRollback(planId);
 
     if (!claim.ok) {
@@ -1206,23 +1830,23 @@ export class CloudflareService {
 
     const plan = claim.plan;
     if (plan.target_service !== 'cloudflare') {
-      planRepo.updatePlanStatus(planId, 'failed');
+      planRepo.updatePlanStatus(planId, 'executed');
       auditRepo.record({
         actor,
         action: 'cloudflare.rollback_plan',
         target: planId,
-        status: 'failure',
+        status: 'denied',
         details: { error: `Wrong target_service: ${plan.target_service}` },
       });
       throw new Error(`Plan "${planId}" targets "${plan.target_service}", not "cloudflare".`);
     }
     if (!plan.rollback_payload) {
-      planRepo.updatePlanStatus(planId, 'failed');
+      planRepo.updatePlanStatus(planId, 'executed');
       auditRepo.record({
         actor,
         action: 'cloudflare.rollback_plan',
         target: planId,
-        status: 'failure',
+        status: 'denied',
         details: { error: 'Missing rollback_payload' },
       });
       throw new Error(`Plan "${planId}" has no rollback_payload stored.`);
@@ -1232,83 +1856,7 @@ export class CloudflareService {
     const action = String(rb.action ?? '');
 
     try {
-      let apiResult: unknown;
-
-      switch (action) {
-        case 'dns_record_update': {
-          const rec = rb.record as Record<string, unknown>;
-          apiResult = await client.dns.records.update(String(rb.recordId), {
-            zone_id: String(rb.zoneId),
-            ...rec,
-          });
-          break;
-        }
-        case 'dns_record_create': {
-          const rec = rb.record as Record<string, unknown>;
-          apiResult = await client.dns.records.create({
-            zone_id: String(rb.zoneId),
-            ...rec,
-          });
-          break;
-        }
-        case 'dns_record_delete_created': {
-          const zoneId = String(rb.zoneId);
-          const records = await collectItems(
-            client.dns.records.list({
-              zone_id: zoneId,
-              name: rb.name,
-              type: rb.type,
-            }),
-            20,
-          );
-          const match = records.find(
-            (r) =>
-              String(r.name ?? '') === String(rb.name) &&
-              String(r.type ?? '') === String(rb.type) &&
-              String(r.content ?? '') === String(rb.content),
-          );
-          if (!match?.id) {
-            throw new Error(
-              `Unable to locate created DNS record (${String(rb.type)} ${String(rb.name)}) for rollback deletion.`,
-            );
-          }
-          apiResult = await client.dns.records.delete(String(match.id), { zone_id: zoneId });
-          break;
-        }
-        case 'waf_rule_update': {
-          const zoneId = String(rb.zoneId);
-          const rules = rb.rules as Array<Record<string, unknown>>;
-          const description = rb.description ? String(rb.description) : undefined;
-          if (rb.rulesetId) {
-            apiResult = await client.rulesets.update(String(rb.rulesetId), {
-              zone_id: zoneId,
-              ...(description ? { description } : {}),
-              rules,
-            });
-          } else {
-            apiResult = await client.rulesets.phases.update(
-              String(rb.phase ?? 'http_request_firewall_custom'),
-              {
-                zone_id: zoneId,
-                ...(description ? { description } : {}),
-                rules,
-              },
-            );
-          }
-          break;
-        }
-        case 'd1_sql_mutation': {
-          apiResult = await collectItems(
-            client.d1.database.query(String(rb.databaseId), {
-              account_id: String(rb.accountId),
-              sql: String(rb.sql),
-            }),
-          );
-          break;
-        }
-        default:
-          throw new Error(`Unsupported rollback action: "${action}"`);
-      }
+      const { apiResult } = await this.rollbackPayloadWithClient(client, rb);
 
       planRepo.updatePlanStatus(planId, 'rolled_back');
       auditRepo.record({

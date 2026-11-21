@@ -1,12 +1,12 @@
 import path from 'node:path';
 import { Octokit } from 'octokit';
 import { wrapUntrustedData } from '../mcp/outputGuard.js';
+import { defaultApprovalGatePolicy, type ApprovalGatePolicy } from '../policy/index.js';
 import type { ScrubberLike } from '../types.js';
 import { buildSandboxedEnv, runSubprocess, type ExecResult } from '../utils/exec.js';
 import { SecretScrubber } from '../utils/secretScrubber.js';
 import { isSensitiveWorkspacePath } from './workspaceLock.js';
 
-const PROTECTED_BRANCH_NAMES = new Set(['main', 'master']);
 const MAX_LOG_TAIL_LINES = 150;
 const MAX_LOG_TAIL_BYTES = 16_000;
 const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
@@ -201,6 +201,7 @@ export interface GitHubServiceOptions {
   octokit?: OctokitLike;
   scrubber?: ScrubberLike;
   gitRunner?: GitCommandRunner;
+  policy?: ApprovalGatePolicy;
 }
 
 export interface PrInspectionResult {
@@ -394,28 +395,19 @@ function normalizeBranchName(branch: string): string {
   return branch.trim().replace(/^refs\/heads\//, '');
 }
 
-function assertValidFeatureBranchName(branch: string, defaultBranch?: string): string {
+function assertValidFeatureBranchName(
+  branch: string,
+  defaultBranch?: string,
+  policy: ApprovalGatePolicy = defaultApprovalGatePolicy,
+): string {
   const normalized = normalizeBranchName(branch);
-  if (!normalized) {
-    throw new Error('Branch name must not be empty.');
+  const decision = policy.evaluateProtectedBranch(branch, defaultBranch);
+  if (!decision.allowed) {
+    if (decision.code === 'PROTECTED_BRANCH') {
+      throw new ProtectedBranchError(normalized, defaultBranch);
+    }
+    throw new Error(decision.reason);
   }
-  if (
-    /\s/.test(normalized) ||
-    normalized.includes('..') ||
-    normalized.startsWith('-') ||
-    normalized.toUpperCase() === 'HEAD'
-  ) {
-    throw new Error(`Invalid feature branch name: "${normalized}"`);
-  }
-
-  const lower = normalized.toLowerCase();
-  if (PROTECTED_BRANCH_NAMES.has(lower)) {
-    throw new ProtectedBranchError(normalized);
-  }
-  if (defaultBranch && lower === normalizeBranchName(defaultBranch).toLowerCase()) {
-    throw new ProtectedBranchError(normalized, defaultBranch);
-  }
-
   return normalized;
 }
 
@@ -465,6 +457,7 @@ export class GitHubService {
   private readonly token?: string;
   private readonly scrubber: ScrubberLike;
   private readonly gitRunner?: GitCommandRunner;
+  private readonly policy: ApprovalGatePolicy;
 
   constructor(options: GitHubServiceOptions = {}) {
     this.token = options.token;
@@ -473,6 +466,7 @@ export class GitHubService {
     this.scrubber =
       options.scrubber ?? new SecretScrubber({ extraSecrets: options.token ? [options.token] : [] });
     this.gitRunner = options.gitRunner;
+    this.policy = options.policy ?? defaultApprovalGatePolicy;
   }
 
   private wrap(sourceLabel: string, text: string): string {
@@ -920,15 +914,16 @@ export class GitHubService {
     const { owner, repo, fullName } = parseRepoSlug(input.repo);
 
     // 1. Pre-check static protected names before any git or API mutation
-    assertValidFeatureBranchName(input.branchName);
+    assertValidFeatureBranchName(input.branchName, undefined, this.policy);
 
     // 2. Fetch repository default_branch and enforce hard block against it
     const repoResp = await this.octokit.rest.repos.get({ owner, repo });
     const defaultBranch = repoResp.data.default_branch;
-    const branchName = assertValidFeatureBranchName(input.branchName, defaultBranch);
+    const branchName = assertValidFeatureBranchName(input.branchName, defaultBranch, this.policy);
     const baseBranch = normalizeBranchName(input.baseBranch || defaultBranch);
 
-    if (branchName.toLowerCase() === baseBranch.toLowerCase()) {
+    const baseDecision = this.policy.evaluateProtectedBranch(branchName, defaultBranch, baseBranch);
+    if (!baseDecision.allowed) {
       throw new ProtectedBranchError(branchName, baseBranch);
     }
 
@@ -947,7 +942,7 @@ export class GitHubService {
     const activeBranch = normalizeBranchName(
       await this.runGitChecked(['rev-parse', '--abbrev-ref', 'HEAD'], input.workspacePath),
     );
-    assertValidFeatureBranchName(activeBranch, defaultBranch);
+    assertValidFeatureBranchName(activeBranch, defaultBranch, this.policy);
 
     // 4. Commit dirty changes if autoCommit !== false (after blocking sensitive files)
     let committed = false;
