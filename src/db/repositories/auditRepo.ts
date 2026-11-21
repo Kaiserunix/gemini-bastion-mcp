@@ -1,6 +1,7 @@
 import type { AuditLogger } from '../../auth/store.js';
 import type { GatewayDatabase } from '../sqlite.js';
-import type { AuditLogRecord } from '../../types.js';
+import type { AuditEventPublisher } from '../../security/auditSink.js';
+import type { AuditLogRecord, ScrubberLike } from '../../types.js';
 
 interface AuditLogRow {
   id: number;
@@ -10,6 +11,11 @@ interface AuditLogRow {
   status: string;
   details_json: string;
   created_at: number;
+}
+
+export interface AuditRepositoryOptions {
+  scrubber?: ScrubberLike;
+  publisher?: AuditEventPublisher;
 }
 
 function mapAuditLog(row: AuditLogRow): AuditLogRecord {
@@ -25,7 +31,68 @@ function mapAuditLog(row: AuditLogRow): AuditLogRecord {
 }
 
 export class AuditRepository implements AuditLogger {
-  constructor(private readonly db: GatewayDatabase) {}
+  private scrubber?: ScrubberLike;
+  private publisher?: AuditEventPublisher;
+  private suppressPublisherForward = false;
+
+  constructor(
+    private readonly db: GatewayDatabase,
+    options: AuditRepositoryOptions = {},
+  ) {
+    this.scrubber = options.scrubber;
+    this.publisher = options.publisher;
+  }
+
+  configure(options: AuditRepositoryOptions): void {
+    if (options.scrubber !== undefined) {
+      this.scrubber = options.scrubber;
+    }
+    if (options.publisher !== undefined) {
+      this.publisher = options.publisher;
+    }
+  }
+
+  isForwardingToPublisher(): boolean {
+    return this.suppressPublisherForward;
+  }
+
+  /**
+   * Inserts a scrubbed audit record into SQLite without re-emitting to `publisher`
+   * (used by `SqliteAuditSink` when `StructuredAuditLogger` originates an event).
+   */
+  recordDirect(input: {
+    actor: string;
+    action: string;
+    target: string;
+    status: string;
+    details?: Record<string, unknown>;
+    created_at?: number;
+  }): AuditLogRecord {
+    const createdAt = input.created_at ?? Date.now();
+    const actor = this.scrubber ? this.scrubber.scrub(input.actor) : input.actor;
+    const action = this.scrubber ? this.scrubber.scrub(input.action) : input.action;
+    const target = this.scrubber ? this.scrubber.scrub(input.target) : input.target;
+    const status = this.scrubber ? this.scrubber.scrub(input.status) : input.status;
+    const rawDetails = input.details ?? {};
+    const details = this.scrubber ? this.scrubber.scrubObject(rawDetails) : rawDetails;
+
+    const info = this.db
+      .prepare(
+        `INSERT INTO audit_logs (actor, action, target, status, details_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(actor, action, target, status, JSON.stringify(details), createdAt);
+
+    return {
+      id: Number(info.lastInsertRowid),
+      actor,
+      action,
+      target,
+      status,
+      details,
+      created_at: createdAt,
+    };
+  }
 
   record(input: {
     actor: string;
@@ -35,31 +102,25 @@ export class AuditRepository implements AuditLogger {
     details?: Record<string, unknown>;
     created_at?: number;
   }): AuditLogRecord {
-    const createdAt = input.created_at ?? Date.now();
-    const details = input.details ?? {};
-    const info = this.db
-      .prepare(
-        `INSERT INTO audit_logs (actor, action, target, status, details_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        input.actor,
-        input.action,
-        input.target,
-        input.status,
-        JSON.stringify(details),
-        createdAt,
-      );
+    const saved = this.recordDirect(input);
 
-    return {
-      id: Number(info.lastInsertRowid),
-      actor: input.actor,
-      action: input.action,
-      target: input.target,
-      status: input.status,
-      details,
-      created_at: createdAt,
-    };
+    if (this.publisher && !this.suppressPublisherForward) {
+      this.suppressPublisherForward = true;
+      try {
+        this.publisher.emit({
+          actor: saved.actor,
+          action: saved.action,
+          target: saved.target,
+          status: saved.status,
+          details: saved.details,
+          created_at: saved.created_at,
+        });
+      } finally {
+        this.suppressPublisherForward = false;
+      }
+    }
+
+    return saved;
   }
 
   list(

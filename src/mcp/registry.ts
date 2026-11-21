@@ -123,11 +123,19 @@ export class McpToolRegistry {
       const rawGuardDeps = def.guardDeps;
       const guardDepsWithPolicy: OutputGuardDeps<Record<string, unknown>, McpHandlerExtraLike> =
         typeof rawGuardDeps === 'function'
-          ? (args, extra): GuardTextOutputOptions => ({
-              ...rawGuardDeps(args, extra),
+          ? (args, extra): GuardTextOutputOptions => {
+              const resolved = rawGuardDeps(args, extra);
+              return {
+                ...resolved,
+                toolName: resolved.toolName ?? def.name,
+                policy: this.policy,
+              };
+            }
+          : {
+              ...rawGuardDeps,
+              toolName: rawGuardDeps.toolName ?? def.name,
               policy: this.policy,
-            })
-          : { ...rawGuardDeps, policy: this.policy };
+            };
 
       server.registerTool(
         def.name,
