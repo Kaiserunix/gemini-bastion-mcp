@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import type { JobRepository } from '../db/repositories/jobRepo.js';
 import type { GatewayConfig, JobRunnerType, JobStatus, ScrubberLike } from '../types.js';
-import { buildSandboxedEnv, startSubprocess, type ExecResult } from '../utils/exec.js';
+import {
+  buildSandboxedEnv,
+  probeBwrapSupport,
+  startSubprocess,
+  type ExecResult,
+} from '../utils/exec.js';
 import { createSecretScrubber } from '../utils/secretScrubber.js';
 import { notifyJobFinished, type WebhookNotifyOptions } from './webhookNotifier.js';
 import {
@@ -96,6 +102,7 @@ export interface WorkspaceExecOptions {
   shell?: boolean;
   cwd?: string;
   readonly?: boolean;
+  allowNetwork?: boolean;
   waitMs?: number;
   maxDurationSec?: number;
   lockTimeoutMs?: number;
@@ -248,6 +255,18 @@ export async function workspaceExec(
     flushTimer.unref?.();
   };
 
+  const bwrapEnabled = Boolean(options.config.sandboxBwrapIsolation);
+  let realWorkspacesRoot = path.resolve(options.config.workspacesDir);
+  try {
+    realWorkspacesRoot = fs.realpathSync(realWorkspacesRoot);
+  } catch {
+    // Keep path.resolve fallback if directory doesn't exist yet
+  }
+
+  if (bwrapEnabled && process.platform === 'linux') {
+    await probeBwrapSupport(undefined, options.config.sandboxUid, options.config.sandboxGid);
+  }
+
   let handle;
   try {
     handle = startSubprocess({
@@ -260,6 +279,14 @@ export async function workspaceExec(
       signal: abortController.signal,
       uid: options.config.sandboxUid,
       gid: options.config.sandboxGid,
+      bwrapIsolation: {
+        enabled: bwrapEnabled,
+        strict: Boolean(options.config.sandboxStrictIsolation),
+        workspaceDir: resolvedCwd.realWorkspaceRoot,
+        workspacesRoot: realWorkspacesRoot,
+        dataDir: options.config.dataDir,
+        allowNetwork: Boolean(options.allowNetwork),
+      },
       onStdout: (chunk) => {
         if (promotedJobId) {
           stdoutBuffer.push(chunk);

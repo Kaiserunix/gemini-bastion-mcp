@@ -1,0 +1,107 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Kaiserunix/gemini-bastion-mcp",
+  "title": "GeminiBastionMCP — Remote MCP Bastion for Web Gemini, Claude & ChatGPT",
+  "description": "OAuth 2.1 MCP bastion for Web Gemini, Claude & ChatGPT: 10 tools, 1 gate, bwrap & multi-agent.",
+  "version": "0.3.0",
+  "repository": {
+    "url": "https://github.com/Kaiserunix/gemini-bastion-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/kaiserunix/gemini-bastion-mcp:0.3.0-lite",
+      "runtimeHint": "docker",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://127.0.0.1:8787/mcp"
+      },
+      "environmentVariables": [
+        {
+          "name": "PUBLIC_DOMAIN",
+          "description": "Public HTTPS origin of your gateway (e.g. https://mcp.yourdomain.com)",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "ADMIN_PASSWORD_HASH",
+          "description": "Operator password hash in scrypt:<saltHex>:<keyHex> format",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "OAUTH_SIGNING_SECRET",
+          "description": "Random secret (>= 32 chars) used to sign OAuth tokens and admin sessions",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "DEFAULT_AGENT_DRIVER",
+          "description": "Default autonomous coding agent driver (codex | claude_code | gemini_cli | opencode)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GOOGLE_OAUTH_CLIENT_ID",
+          "description": "Optional Google OAuth Client ID for upstream operator SSO on /admin/login and /oauth/authorize",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GITHUB_OAUTH_CLIENT_ID",
+          "description": "Optional GitHub OAuth Client ID for upstream operator SSO on /admin/login and /oauth/authorize",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/kaiserunix/gemini-bastion-mcp:0.3.0-full",
+      "runtimeHint": "docker",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://127.0.0.1:8787/mcp"
+      },
+      "environmentVariables": [
+        {
+          "name": "PUBLIC_DOMAIN",
+          "description": "Public HTTPS origin of your gateway (e.g. https://mcp.yourdomain.com)",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "ADMIN_PASSWORD_HASH",
+          "description": "Operator password hash in scrypt:<saltHex>:<keyHex> format",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "OAUTH_SIGNING_SECRET",
+          "description": "Random secret (>= 32 chars) used to sign OAuth tokens and admin sessions",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "DEFAULT_AGENT_DRIVER",
+          "description": "Default autonomous coding agent driver (codex | claude_code | gemini_cli | opencode)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GOOGLE_OAUTH_CLIENT_ID",
+          "description": "Optional Google OAuth Client ID for upstream operator SSO on /admin/login and /oauth/authorize",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "GITHUB_OAUTH_CLIENT_ID",
+          "description": "Optional GitHub OAuth Client ID for upstream operator SSO on /admin/login and /oauth/authorize",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

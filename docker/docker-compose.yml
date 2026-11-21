@@ -2,22 +2,28 @@
 # GeminiBastionMCP (gemini-bastion-mcp) Production Docker Compose Stack
 # ==============================================================================
 # Usage:
-#   Core stack (gateway + cloudflared):
-#     Put CLOUDFLARE_TUNNEL_TOKEN in docker/.env (or export in shell) and use `scrypt:<saltHex>:<keyHex>`
-#     for ADMIN_PASSWORD_HASH in ../.env (note: legacy `scrypt$...` must be escaped as `scrypt$$...` for Compose):
-#     docker compose -f docker/docker-compose.yml up -d --build
+#   Instant GHCR pull (lite image, ~350MB):
+#     docker compose -f docker/docker-compose.yml pull && docker compose -f docker/docker-compose.yml up -d
 #
-#   With optional ops-mcp SSH sidecar (MCP-2 federation):
-#     docker compose -f docker/docker-compose.yml --profile ops up -d --build
+#   Build full toolchain variant locally (Python 3.12+uv, mise, ruff, biome, gh, wrangler):
+#     BASTION_IMAGE_TAG=full BASTION_TARGET=runtime-full docker compose -f docker/docker-compose.yml up -d --build
+#
+#   With authenticated ops-mcp SSH sidecar (requires OPS_MCP_AUTH_TOKEN >= 24 chars):
+#     docker compose -f docker/docker-compose.yml --profile ops up -d
+#
+#   With dedicated UID 1002 isolated-runner sidecar (no /data, no GH/CF/OAuth secrets):
+#     docker compose -f docker/docker-compose.yml --profile isolated-runner up -d
 # ==============================================================================
 
 name: gemini-bastion-mcp
 
 services:
   gateway:
+    image: ghcr.io/kaiserunix/gemini-bastion-mcp:${BASTION_IMAGE_TAG:-lite}
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      target: ${BASTION_TARGET:-runtime-lite}
       args:
         NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
     container_name: gemini-bastion-mcp-gateway
@@ -38,7 +44,6 @@ services:
       MISE_CONFIG_DIR: /opt/mise/config
       SANDBOX_UID: "1002"
       SANDBOX_GID: "1002"
-      # TRUST_CF_CONNECTING_IP is read from ../.env (defaults to true in src/config.ts)
       # Clear tunnel credentials from the gateway container environment
       CLOUDFLARE_TUNNEL_TOKEN: ""
       TUNNEL_TOKEN: ""
@@ -56,6 +61,11 @@ services:
     networks:
       - edge_net
       - ops_net
+      - runner_net
+    # On Ubuntu/Debian AppArmor hosts, uncomment to enable nested `bwrap` user namespaces
+    # (otherwise probeBwrapSupport cleanly falls back to UID 1002 worker isolation):
+    # security_opt:
+    #   - apparmor:unconfined
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/healthz"]
       interval: 30s
@@ -82,10 +92,11 @@ services:
     networks:
       - edge_net
 
-  # Optional downstream MCP-2 sidecar (isolated on ops_net; zero access to /workspaces or /data)
-  # Packages are pre-installed in docker/Dockerfile.ops-mcp so it runs offline on internal ops_net as non-root `node`.
+  # Optional authenticated downstream MCP-2 sidecar (isolated on ops_net; zero access to /workspaces or /data)
+  # Fails closed on startup unless OPS_MCP_AUTH_TOKEN (>= 24 chars) is set.
   ops-mcp:
     profiles: ["ops"]
+    image: ghcr.io/kaiserunix/gemini-bastion-mcp-ops:${OPS_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile.ops-mcp
@@ -96,8 +107,10 @@ services:
     labels:
       com.geminibastion.service: "ops-mcp"
       com.geminibastion.project: "gemini-bastion-mcp"
+    environment:
+      OPS_MCP_AUTH_TOKEN: ${OPS_MCP_AUTH_TOKEN:-}
     expose:
-      - "8090"
+      - "9000"
     volumes:
       # Dedicated restricted SSH keys/config strictly isolated from code workspaces.
       # Create ./ops-ssh (with ssh-mcp config.json and read-only deploy key) before enabling --profile ops.
@@ -107,12 +120,60 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Optional dedicated agent runner sidecar (runs strictly as UID 1002 worker with NO /data, NO SQLite, and NO GH/CF/OAuth secrets)
+  isolated-runner:
+    profiles: ["isolated-runner"]
+    image: ghcr.io/kaiserunix/gemini-bastion-mcp:${BASTION_IMAGE_TAG:-lite}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: ${BASTION_TARGET:-runtime-lite}
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+    container_name: gemini-bastion-mcp-isolated-runner
+    restart: unless-stopped
+    user: "1002:1002"
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["node", "dist/runner/sidecarServer.js"]
+    labels:
+      com.geminibastion.service: "isolated-runner"
+      com.geminibastion.project: "gemini-bastion-mcp"
+    environment:
+      NODE_ENV: production
+      PORT: "8788"
+      AGENT_RUNNER_HOST: "0.0.0.0"
+      AGENT_RUNNER_PORT: "8788"
+      WORKSPACES_DIR: /workspaces
+      MISE_DATA_DIR: /opt/mise
+      MISE_CACHE_DIR: /opt/mise/cache
+      MISE_CONFIG_DIR: /opt/mise/config
+      AGENT_RUNNER_AUTH_TOKEN: ${AGENT_RUNNER_AUTH_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CODEX_API_KEY: ${CODEX_API_KEY:-}
+      CODEX_BASE_URL: ${CODEX_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DEFAULT_AGENT_DRIVER: ${DEFAULT_AGENT_DRIVER:-codex}
+      SANDBOX_BWRAP_ISOLATION: ${SANDBOX_BWRAP_ISOLATION:-true}
+      SANDBOX_STRICT_ISOLATION: ${SANDBOX_STRICT_ISOLATION:-false}
+    expose:
+      - "8788"
+    volumes:
+      - mcp_workspaces:/workspaces
+      - mcp_tool_caches:/opt/mise
+    networks:
+      - runner_net
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   edge_net:
     driver: bridge
   ops_net:
     driver: bridge
     internal: true
+  runner_net:
+    driver: bridge
 
 volumes:
   mcp_sqlite_data:

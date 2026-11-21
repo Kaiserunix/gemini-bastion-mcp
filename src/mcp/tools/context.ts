@@ -8,7 +8,7 @@ import {
 } from '../../policy/index.js';
 import type { AuditEventPublisher } from '../../security/auditSink.js';
 import type { PolicyEvaluatorPort } from '../../security/policyEvaluator.js';
-import type { GatewayConfig, ScrubberLike } from '../../types.js';
+import type { AgentRunner, GatewayConfig, ScrubberLike } from '../../types.js';
 import {
   defaultWorkspaceToolAdapter,
   type AgentRunnerAdapter,
@@ -28,7 +28,8 @@ export interface McpToolDeps {
   githubService: GitHubToolAdapter;
   cloudflareService: CloudflareToolAdapter;
   downstreamBridge: DownstreamMcpToolAdapter;
-  codexRunner: AgentRunnerAdapter;
+  agentRunner?: AgentRunner;
+  codexRunner?: AgentRunnerAdapter;
   workspaceAdapter?: WorkspaceToolAdapter;
   approvalPolicy?: ApprovalGatePolicy;
   planGate?: MutationPlanGate;
@@ -36,6 +37,14 @@ export interface McpToolDeps {
   policyEvaluator?: PolicyEvaluatorPort;
   auditPublisher?: AuditEventPublisher;
   notifyWebhook?: (event: string, payload: Record<string, unknown>) => Promise<void>;
+}
+
+export function getAgentRunner(deps: McpToolDeps): AgentRunner {
+  const runner = deps.agentRunner ?? deps.codexRunner;
+  if (!runner) {
+    throw new Error('No agentRunner or codexRunner configured in McpToolDeps.');
+  }
+  return runner;
 }
 
 export function getWorkspaceAdapter(deps: McpToolDeps): WorkspaceToolAdapter {

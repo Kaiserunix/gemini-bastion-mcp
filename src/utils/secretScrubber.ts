@@ -1,4 +1,5 @@
-import type { GatewayConfig, ScrubberLike } from '../types.js';
+import fs from 'node:fs';
+import type { DownstreamMcpServerConfig, GatewayConfig, ScrubberLike } from '../types.js';
 
 export const REDACTED_PLACEHOLDER = '[REDACTED_SECRET]';
 
@@ -12,6 +13,11 @@ const EXPLICIT_SECRET_KEYS = [
   'CLOUDFLARE_READONLY_API_TOKEN',
   'OPENAI_API_KEY',
   'CODEX_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'GEMINI_API_KEY',
+  'OPS_MCP_AUTH_TOKEN',
+  'AGENT_RUNNER_AUTH_TOKEN',
+  'GITHUB_WEBHOOK_SECRET',
   'OAUTH_SIGNING_SECRET',
   'OAUTH_STATIC_CLIENT_SECRET',
   'GOOGLE_OAUTH_CLIENT_SECRET',
@@ -34,6 +40,11 @@ const REGEX_SCRUB_RULES: Array<{ pattern: RegExp; replacement: string }> = [
   // OpenAI / Codex / Anthropic-style sk- tokens
   {
     pattern: /\bsk-(?:proj-|svcacct-|admin-|ant-)?[A-Za-z0-9_-]{16,}\b/g,
+    replacement: REDACTED_PLACEHOLDER,
+  },
+  // Google / Gemini API keys
+  {
+    pattern: /\bAIza[0-9A-Za-z_-]{30,}\b/g,
     replacement: REDACTED_PLACEHOLDER,
   },
   // JWTs (header.payload.signature or header.payload)
@@ -69,8 +80,25 @@ const REGEX_SCRUB_RULES: Array<{ pattern: RegExp; replacement: string }> = [
 export interface SecretScrubberOptions {
   extraSecrets?: string[];
   env?: Record<string, string | undefined>;
-  config?: Partial<GatewayConfig>;
+  config?: Partial<GatewayConfig> & { downstreamMcps?: DownstreamMcpServerConfig[] };
+  downstreamMcps?: DownstreamMcpServerConfig[];
   minSecretLength?: number;
+}
+
+function extractDownstreamServers(parsed: unknown): DownstreamMcpServerConfig[] {
+  if (Array.isArray(parsed)) {
+    return parsed as DownstreamMcpServerConfig[];
+  }
+  if (parsed && typeof parsed === 'object') {
+    const asObj = parsed as { servers?: unknown };
+    if (Array.isArray(asObj.servers)) {
+      return asObj.servers as DownstreamMcpServerConfig[];
+    }
+    return Object.values(parsed as Record<string, DownstreamMcpServerConfig>).filter(
+      (entry): entry is DownstreamMcpServerConfig => Boolean(entry && typeof entry === 'object'),
+    );
+  }
+  return [];
 }
 
 /**
@@ -78,17 +106,22 @@ export interface SecretScrubberOptions {
  */
 export class SecretScrubber implements ScrubberLike {
   private readonly minSecretLength: number;
+  private readonly envRef: Record<string, string | undefined>;
   private readonly exactSecrets = new Set<string>();
   private sortedSecrets: string[] = [];
 
   constructor(options: SecretScrubberOptions = {}) {
     this.minSecretLength = options.minSecretLength ?? 8;
+    this.envRef = options.env ?? process.env;
 
     if (options.env) {
       this.collectFromEnv(options.env);
     }
     if (options.config) {
       this.collectFromConfig(options.config);
+    }
+    if (options.downstreamMcps) {
+      this.collectFromDownstreamMcps(options.downstreamMcps, this.envRef);
     }
     if (options.extraSecrets) {
       for (const secret of options.extraSecrets) {
@@ -116,7 +149,33 @@ export class SecretScrubber implements ScrubberLike {
     }
   }
 
-  collectFromConfig(config: Partial<GatewayConfig>): void {
+  collectFromDownstreamMcps(
+    servers: DownstreamMcpServerConfig[],
+    env: Record<string, string | undefined> = this.envRef,
+  ): void {
+    for (const server of servers) {
+      if (!server || typeof server !== 'object') continue;
+      this.addSecret(server.authToken);
+      if (server.authTokenEnv && env[server.authTokenEnv]) {
+        this.addSecret(env[server.authTokenEnv]);
+      }
+      if (server.headers && typeof server.headers === 'object') {
+        for (const [headerKey, headerVal] of Object.entries(server.headers)) {
+          if (!headerVal) continue;
+          if (/authorization|token|secret|api[-_]?key/i.test(headerKey)) {
+            this.addSecret(headerVal);
+            if (/^bearer\s+/i.test(headerVal)) {
+              this.addSecret(headerVal.replace(/^bearer\s+/i, '').trim());
+            }
+          }
+        }
+      }
+    }
+  }
+
+  collectFromConfig(
+    config: Partial<GatewayConfig> & { downstreamMcps?: DownstreamMcpServerConfig[] },
+  ): void {
     this.addSecret(config.adminPasswordHash);
     this.addSecret(config.oauthSigningSecret);
     this.addSecret(config.oauthStaticClientSecret);
@@ -127,7 +186,40 @@ export class SecretScrubber implements ScrubberLike {
     this.addSecret(config.cloudflareReadonlyApiToken);
     this.addSecret(config.openaiApiKey);
     this.addSecret(config.codexApiKey);
+    this.addSecret(config.anthropicApiKey);
+    this.addSecret(config.geminiApiKey);
+    this.addSecret(config.agentRunnerAuthToken);
+    this.addSecret(config.opsMcpAuthToken);
+    this.addSecret(config.githubWebhookSecret);
     this.addSecret(config.notifyWebhookUrl);
+
+    if (Array.isArray(config.downstreamMcps)) {
+      this.collectFromDownstreamMcps(config.downstreamMcps, this.envRef);
+    }
+    if (config.downstreamMcpsJson) {
+      try {
+        const servers = extractDownstreamServers(JSON.parse(config.downstreamMcpsJson));
+        if (servers.length > 0) {
+          this.collectFromDownstreamMcps(servers, this.envRef);
+        }
+      } catch {
+        // Ignore malformed JSON during best-effort scrubber collection
+      }
+    }
+    if (config.downstreamMcpsFile) {
+      try {
+        if (fs.existsSync(config.downstreamMcpsFile)) {
+          const servers = extractDownstreamServers(
+            JSON.parse(fs.readFileSync(config.downstreamMcpsFile, 'utf8')),
+          );
+          if (servers.length > 0) {
+            this.collectFromDownstreamMcps(servers, this.envRef);
+          }
+        }
+      } catch {
+        // Ignore unreadable/malformed file during best-effort scrubber collection
+      }
+    }
   }
 
   scrub(input: string): string {

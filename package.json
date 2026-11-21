@@ -1,7 +1,7 @@
 {
   "name": "gemini-bastion-mcp",
-  "version": "0.1.0",
-  "description": "GeminiBastionMCP: Self-hosted OAuth 2.1 Streamable HTTP MCP bastion for Web Gemini, Claude.ai, and ChatGPT with 10 tools, isolated workspaces, Codex SDK orchestration, and a single publish_changes approval gate.",
+  "version": "0.3.0",
+  "description": "GeminiBastionMCP: Self-hosted OAuth 2.1 Streamable HTTP MCP bastion for Web Gemini, Claude.ai, and ChatGPT — 10 sandboxed tools, 1 approval gate, bwrap namespace isolation, and multi-agent drivers (Codex, Claude Code, Gemini CLI, OpenCode).",
   "homepage": "https://kaiserunix.github.io/gemini-bastion-mcp/",
   "repository": {
     "type": "git",
@@ -46,6 +46,7 @@
     "dev": "tsx --env-file-if-exists=.env watch src/index.ts",
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/index.js",
+    "start:runner": "node dist/runner/sidecarServer.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

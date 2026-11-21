@@ -2,9 +2,10 @@
   {
     "id": "ops-ssh",
     "transport": "http",
-    "url": "http://ops-mcp:8090/mcp",
+    "url": "http://ops-mcp:9000/mcp",
+    "authTokenEnv": "OPS_MCP_AUTH_TOKEN",
     "headers": {},
-    "description": "Internal Streamable HTTP SSH sidecar on ops_net (uarlouski/ssh-mcp-server via mcp-proxy). Holds restricted SSH keys isolated from /workspaces.",
+    "description": "Authenticated internal Streamable HTTP SSH sidecar on ops_net (uarlouski/ssh-mcp-server via mcp-proxy + Bearer auth proxy). Holds restricted SSH keys isolated from /workspaces.",
     "enabled": true,
     "timeoutMs": 30000,
     "readonlyTools": [

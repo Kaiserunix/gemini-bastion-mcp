@@ -22,7 +22,8 @@ import {
 } from '../auth/store.js';
 import { isGitHubOAuthEnabled, isGoogleOAuthEnabled } from '../config.js';
 import type { Repositories } from '../db/repositories/index.js';
-import type { GatewayConfig, ScrubberLike } from '../types.js';
+import { MEMORY_CATEGORIES } from '../db/repositories/memoryRepo.js';
+import type { GatewayConfig, MemoryCategory, ScrubberLike } from '../types.js';
 import { createSecretScrubber } from '../utils/secretScrubber.js';
 import {
   renderAdminDashboardHtml,
@@ -280,12 +281,14 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
     );
     const activeTokens = repos.oauth.listActiveTokens(now);
     const oauthSessions = new Set(activeTokens.map((t) => t.token_family_id)).size;
+    const memoriesCount = repos.memories.countAll();
     return {
       activeJobs,
       stagedPlans,
       workspaces: workspaces.length,
       latestSyncAt,
       oauthSessions,
+      memoriesCount,
     };
   };
 
@@ -596,6 +599,55 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
     const limit = parseLimit(c.req.query('limit'), 50, 200);
     const plans = scrubber.scrubObject(repos.plans.listPlans({ limit }));
     return c.json({ plans }, 200, { 'Cache-Control': 'no-store' });
+  });
+
+  app.get('/api/memories', (c) => {
+    const workspaceSlug = c.req.query('workspace')?.trim() || undefined;
+    const rawCategory = c.req.query('category')?.trim() || undefined;
+    const limit = parseLimit(c.req.query('limit'), 100, 200);
+
+    if (rawCategory && !MEMORY_CATEGORIES.includes(rawCategory as MemoryCategory)) {
+      return c.json({ error: 'invalid_category' }, 400);
+    }
+
+    try {
+      const memories = scrubber.scrubObject(
+        repos.memories.listMemories({
+          workspaceSlug,
+          category: rawCategory as MemoryCategory | undefined,
+          limit,
+        }),
+      );
+      return c.json({ memories }, 200, { 'Cache-Control': 'no-store' });
+    } catch {
+      return c.json({ error: 'invalid_workspace' }, 400);
+    }
+  });
+
+  app.delete('/api/memories/:id', (c) => {
+    const memoryId = c.req.param('id');
+    const existing = repos.memories.getMemoryById(memoryId);
+    if (!existing) {
+      return c.json({ error: 'memory_not_found' }, 404);
+    }
+
+    const deleted = repos.memories.deleteMemoryById(memoryId);
+    repos.audit.record({
+      actor: 'admin',
+      action: 'admin.memory.delete',
+      target: memoryId,
+      status: deleted ? 'success' : 'failure',
+      details: {
+        workspace_slug: existing.workspace_slug,
+        category: existing.category,
+        key: existing.key,
+      },
+    });
+
+    if (!deleted) {
+      return c.json({ error: 'memory_not_found' }, 404);
+    }
+    return c.json({ ok: true, memory_id: memoryId }, 200);
   });
 
   app.get('/api/audit', (c) => {

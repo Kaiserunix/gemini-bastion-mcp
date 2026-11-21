@@ -9,6 +9,7 @@ import type { Repositories } from './db/repositories/index.js';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type NodeEnv = 'development' | 'test' | 'production';
 export type CodexReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type AgentDriverName = 'codex' | 'claude_code' | 'gemini_cli' | 'opencode';
 
 export interface GatewayConfig {
   nodeEnv: NodeEnv;
@@ -72,6 +73,20 @@ export interface GatewayConfig {
 
   sandboxUid?: number;
   sandboxGid?: number;
+  sandboxBwrapIsolation: boolean;
+  sandboxStrictIsolation: boolean;
+
+  defaultAgentDriver: AgentDriverName;
+  anthropicApiKey?: string;
+  geminiApiKey?: string;
+  agentRunnerUrl?: string;
+  agentRunnerAuthToken?: string;
+  opsMcpAuthToken?: string;
+
+  watchdogEnabled: boolean;
+  githubWebhookSecret?: string;
+  watchdogAllowedRepos: string[];
+  watchdogAgentDriver?: AgentDriverName;
 }
 
 // ============================================================================
@@ -169,6 +184,19 @@ export interface WorkspaceRecord {
   last_synced_at: number | null;
 }
 
+export type MemoryCategory = 'task_state' | 'decision' | 'pitfall' | 'preference' | 'note';
+
+export interface WorkspaceMemoryRecord {
+  memory_id: string;
+  workspace_slug: string;
+  category: MemoryCategory;
+  key: string;
+  content: string;
+  pinned: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface CheckpointRecord {
   checkpoint_id: string;
   workspace_slug: string;
@@ -178,7 +206,13 @@ export interface CheckpointRecord {
   created_at: number;
 }
 
-export type JobRunnerType = 'shell' | 'codex_readonly' | 'codex_write' | 'shell_task';
+export type JobRunnerType =
+  | 'shell'
+  | 'codex_readonly'
+  | 'codex_write'
+  | 'agent_readonly'
+  | 'agent_write'
+  | 'shell_task';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
 
 export type JobEventType =
@@ -263,6 +297,8 @@ export interface DownstreamMcpServerConfig {
   transport: 'http' | 'stdio';
   url?: string;
   headers?: Record<string, string>;
+  authToken?: string;
+  authTokenEnv?: string;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
@@ -284,6 +320,7 @@ export interface AgentRunOptions {
   workspaceDir: string;
   mode: 'readonly' | 'write';
   objective: string;
+  driver?: AgentDriverName;
   resumeThreadId?: string;
   model?: string;
   reasoningEffort?: CodexReasoningEffort;

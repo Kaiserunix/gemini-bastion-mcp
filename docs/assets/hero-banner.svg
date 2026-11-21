@@ -1,98 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" width="1280" height="360" role="img" aria-label="GeminiBastionMCP Hero Banner">
-  <defs>
-    <linearGradient id="heroBg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0b1020" />
-      <stop offset="55%" stop-color="#111a33" />
-      <stop offset="100%" stop-color="#0b1020" />
-    </linearGradient>
-    <radialGradient id="blueGlow" cx="82%" cy="22%" r="55%">
-      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.26" />
-      <stop offset="100%" stop-color="#0b1020" stop-opacity="0" />
-    </radialGradient>
-    <radialGradient id="greenGlow" cx="15%" cy="80%" r="48%">
-      <stop offset="0%" stop-color="#10b981" stop-opacity="0.16" />
-      <stop offset="100%" stop-color="#0b1020" stop-opacity="0" />
-    </radialGradient>
-    <linearGradient id="shieldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#60a5fa" />
-      <stop offset="100%" stop-color="#2563eb" />
-    </linearGradient>
-    <linearGradient id="cardSurface" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#15203b" />
-      <stop offset="100%" stop-color="#0f172a" />
-    </linearGradient>
-  </defs>
-
-  <!-- Background & Outer Frame -->
-  <rect width="1280" height="360" rx="22" fill="url(#heroBg)" />
-  <rect width="1280" height="360" rx="22" fill="url(#blueGlow)" />
-  <rect width="1280" height="360" rx="22" fill="url(#greenGlow)" />
-  <rect x="2" y="2" width="1276" height="356" rx="20" fill="none" stroke="#233054" stroke-width="2" />
-
-  <!-- Subtle Technical Grid Lines -->
-  <g stroke="#1e2b4a" stroke-width="1" opacity="0.45">
-    <line x1="0" y1="72" x2="1280" y2="72" />
-    <line x1="0" y1="180" x2="1280" y2="180" />
-    <line x1="0" y1="288" x2="1280" y2="288" />
-    <line x1="256" y1="0" x2="256" y2="360" />
-    <line x1="880" y1="0" x2="880" y2="360" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" width="1280" height="360" role="img" aria-label="GeminiBastionMCP v0.3.0 — Editorial Architecture Banner">
+  <!-- Warm Alabaster Canvas & Subtle Swiss Grid -->
+  <rect width="1280" height="360" rx="16" fill="#FBFBFB" />
+  <g stroke="#EFEFEF" stroke-width="1">
+    <line x1="0" y1="64" x2="1280" y2="64" />
+    <line x1="0" y1="296" x2="1280" y2="296" />
+    <line x1="96" y1="0" x2="96" y2="360" />
+    <line x1="820" y1="0" x2="820" y2="360" />
+    <line x1="1184" y1="0" x2="1184" y2="360" />
   </g>
+  <rect x="1" y="1" width="1278" height="358" rx="15" fill="none" stroke="#E4E4E7" stroke-width="2" />
 
-  <!-- Left Geometric Bastion Shield Emblem -->
-  <g transform="translate(64, 68)">
-    <rect x="0" y="0" width="184" height="184" rx="36" fill="url(#cardSurface)" stroke="#283963" stroke-width="2.5" />
-    <path d="M92 28 L144 48 V92 C144 127 121 151 92 162 C63 151 40 127 40 92 V48 Z" fill="#0b1224" stroke="url(#shieldBorder)" stroke-width="5" stroke-linejoin="round" />
-    <path d="M66 75 L92 61 L118 75 V107 L92 123 L66 107 Z" fill="none" stroke="#60a5fa" stroke-width="4" stroke-linejoin="round" />
-    <circle cx="92" cy="92" r="12" fill="#3b82f6" />
-    <circle cx="92" cy="92" r="5" fill="#e6ecff" />
-    <!-- Status badge below shield -->
-    <rect x="26" y="198" width="132" height="28" rx="14" fill="#0d2824" stroke="#10b981" stroke-width="1.5" />
-    <circle cx="46" cy="212" r="5" fill="#10b981" />
-    <text x="60" y="217" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="700">v0.1.0 · ONLINE</text>
-  </g>
-
-  <!-- Center Brand Headline & Subtitle -->
-  <g transform="translate(284, 78)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif">
-    <!-- Top Eyebrow Pill -->
-    <rect x="0" y="0" width="388" height="28" rx="14" fill="#131f3a" stroke="#3b82f6" stroke-width="1.2" />
-    <text x="16" y="18" fill="#93c5fd" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="700">MCP 2025-11-25 STREAMABLE HTTP · OAUTH 2.1 + PKCE + DCR</text>
+  <!-- Left Editorial Typography Column -->
+  <g transform="translate(124, 78)" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', 'Segoe UI', system-ui, sans-serif">
+    <!-- Quiet Eyebrow -->
+    <g transform="translate(0, 0)">
+      <circle cx="6" cy="11" r="4" fill="#047857" />
+      <text x="18" y="15" fill="#52525B" font-family="'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace" font-size="12" font-weight="600" letter-spacing="0.4">v0.3.0 · OFFICIAL MCP REGISTRY · io.github.Kaiserunix/gemini-bastion-mcp</text>
+    </g>
 
     <!-- Main Title -->
-    <text x="0" y="82" fill="#f8fafc" font-size="52" font-weight="800" letter-spacing="-1">GeminiBastionMCP</text>
-    <text x="488" y="76" fill="#60a5fa" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="600">gemini-bastion-mcp</text>
+    <text x="0" y="76" fill="#111113" font-size="52" font-weight="700" letter-spacing="-1.6">GeminiBastionMCP</text>
 
     <!-- Subtitle -->
-    <text x="0" y="122" fill="#cbd5e1" font-size="20" font-weight="600">Remote OAuth 2.1 Streamable HTTP MCP Bastion · 10 Tools · 1 Approval Gate</text>
-    <text x="0" y="152" fill="#93a3c8" font-size="15">Sandboxed Git Workspaces · @openai/codex-sdk Runner · Two-Phase Cloudflare Ops · Zero Secret Leakage</text>
+    <text x="0" y="114" fill="#27272A" font-size="19" font-weight="500" letter-spacing="-0.2">Self-hosted OAuth 2.1 Streamable HTTP bastion for Web Gemini, Claude.ai, and ChatGPT.</text>
+    <text x="0" y="142" fill="#71717A" font-size="15">10 tools, 1 approval gate · Cross-session SQLite memory · 4 agent drivers · bubblewrap workspace jail.</text>
 
-    <!-- Capability Pill Badges Row -->
-    <g transform="translate(0, 178)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="600">
-      <rect x="0" y="0" width="114" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
-      <circle cx="18" cy="16" r="4.5" fill="#3b82f6" />
-      <text x="30" y="20" fill="#e6ecff">Web Gemini</text>
+    <!-- Minimal Hairline Capability Pills -->
+    <g transform="translate(0, 174)" font-family="'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace" font-size="12" font-weight="500" fill="#27272A">
+      <rect x="0" y="0" width="138" height="30" rx="6" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.2" />
+      <text x="69" y="19" text-anchor="middle">MCP 2025-11-25</text>
 
-      <rect x="124" y="0" width="106" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
-      <circle cx="142" cy="16" r="4.5" fill="#60a5fa" />
-      <text x="154" y="20" fill="#e6ecff">Claude.ai</text>
+      <rect x="148" y="0" width="154" height="30" rx="6" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.2" />
+      <text x="225" y="19" text-anchor="middle">OAuth 2.1 + PKCE</text>
 
-      <rect x="240" y="0" width="96" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
-      <circle cx="258" cy="16" r="4.5" fill="#10b981" />
-      <text x="270" y="20" fill="#e6ecff">ChatGPT</text>
+      <rect x="312" y="0" width="154" height="30" rx="6" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.2" />
+      <text x="389" y="19" text-anchor="middle">bwrap FS/Net Jail</text>
 
-      <rect x="346" y="0" width="108" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
-      <circle cx="364" cy="16" r="4.5" fill="#f59e0b" />
-      <text x="376" y="20" fill="#e6ecff">Codex SDK</text>
-
-      <rect x="464" y="0" width="112" height="32" rx="10" fill="#131a2e" stroke="#2c3e6b" stroke-width="1.5" />
-      <circle cx="482" cy="16" r="4.5" fill="#fb923c" />
-      <text x="494" y="20" fill="#e6ecff">Cloudflare</text>
-
-      <rect x="586" y="0" width="168" height="32" rx="10" fill="#131a2e" stroke="#10b981" stroke-width="1.5" />
-      <circle cx="604" cy="16" r="4.5" fill="#10b981" />
-      <text x="616" y="20" fill="#86efac">Google/GitHub SSO</text>
-
-      <rect x="764" y="0" width="128" height="32" rx="10" fill="#0d2824" stroke="#10b981" stroke-width="1.5" />
-      <text x="780" y="20" fill="#86efac">59/59 Tests ✓</text>
+      <rect x="476" y="0" width="174" height="30" rx="6" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.2" />
+      <text x="563" y="19" text-anchor="middle">Persistent Memory</text>
     </g>
+  </g>
+
+  <!-- Right Minimalist Architecture Schematic Card -->
+  <g transform="translate(848, 64)" font-family="'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace">
+    <rect x="0" y="0" width="312" height="232" rx="12" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1.5" />
+    <!-- Top card header -->
+    <line x1="0" y1="38" x2="312" y2="38" stroke="#E4E4E7" stroke-width="1" />
+    <rect x="18" y="13" width="12" height="12" rx="3" fill="#111113" />
+    <text x="38" y="23" fill="#111113" font-size="11.5" font-weight="600">CONTRACT FUNNEL</text>
+    <text x="294" y="23" text-anchor="end" fill="#71717A" font-size="11">10 TOOLS</text>
+
+    <!-- Tier 1 Row -->
+    <rect x="18" y="54" width="276" height="46" rx="8" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="1" />
+    <circle cx="34" cy="77" r="4" fill="#047857" />
+    <text x="48" y="73" fill="#047857" font-size="11.5" font-weight="600">TIER 1 · TOOLS 01–08</text>
+    <text x="48" y="89" fill="#065F46" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11.5">Sandbox &amp; Read-Only (Always Allow)</text>
+
+    <!-- Tier 2 Row -->
+    <rect x="18" y="110" width="276" height="46" rx="8" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1" />
+    <circle cx="34" cy="133" r="4" fill="#B45309" />
+    <text x="48" y="129" fill="#B45309" font-size="11.5" font-weight="600">TIER 2 · TOOL 09</text>
+    <text x="48" y="145" fill="#92400E" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11.5">stage_mutation_plan (15m TTL Snapshot)</text>
+
+    <!-- Tier 3 Row -->
+    <rect x="18" y="166" width="276" height="48" rx="8" fill="#FEF2F2" stroke="#FECACA" stroke-width="1" />
+    <circle cx="34" cy="190" r="4" fill="#B91C1C" />
+    <text x="48" y="186" fill="#B91C1C" font-size="11.5" font-weight="600">TIER 3 · TOOL 10</text>
+    <text x="48" y="202" fill="#991B1B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11.5">publish_changes (Single Approval Gate)</text>
   </g>
 </svg>

@@ -63,6 +63,7 @@ export interface DownstreamMcpBridgeOptions {
   scrubber?: ScrubberLike;
   policy?: ApprovalGatePolicy;
   clientFactory?: DownstreamClientFactory;
+  env?: Record<string, string | undefined>;
 }
 
 export interface ListedDownstreamTool extends DownstreamToolDescriptor {
@@ -113,6 +114,8 @@ const serverConfigSchema = z
     transport: z.enum(['http', 'stdio']),
     url: z.string().url().optional(),
     headers: z.record(z.string()).optional(),
+    authToken: z.string().min(1).optional(),
+    authTokenEnv: z.string().min(1).optional(),
     command: z.string().min(1).optional(),
     args: z.array(z.string()).optional(),
     env: z.record(z.string()).optional(),
@@ -235,8 +238,52 @@ function extractMcpToolText(result: {
     .join('\n');
 }
 
+/**
+ * Resolves per-server HTTP headers including Bearer auth from `authToken` or `authTokenEnv`.
+ * Fails closed if `authTokenEnv` is configured but missing or empty in env.
+ */
+export function resolveDownstreamServerHeaders(
+  server: DownstreamMcpServerConfig,
+  env: Record<string, string | undefined> = process.env,
+): Record<string, string> | undefined {
+  const headers: Record<string, string> = server.headers ? { ...server.headers } : {};
+
+  let resolvedToken: string | undefined;
+  if (server.authTokenEnv !== undefined) {
+    const envVarName = server.authTokenEnv.trim();
+    const rawVal = envVarName ? env[envVarName] : undefined;
+    const trimmedVal = rawVal?.trim();
+    if (!trimmedVal) {
+      throw new Error(
+        `Downstream MCP server "${server.id}" requires authTokenEnv "${server.authTokenEnv}", which is missing or empty.`,
+      );
+    }
+    resolvedToken = trimmedVal;
+  } else if (server.authToken !== undefined) {
+    const trimmedToken = server.authToken.trim();
+    if (!trimmedToken) {
+      throw new Error(
+        `Downstream MCP server "${server.id}" has an empty authToken configured.`,
+      );
+    }
+    resolvedToken = trimmedToken;
+  }
+
+  if (resolvedToken) {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'authorization') {
+        delete headers[key];
+      }
+    }
+    headers.Authorization = `Bearer ${resolvedToken}`;
+  }
+
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
 async function defaultClientFactory(
   server: DownstreamMcpServerConfig,
+  env: Record<string, string | undefined> = process.env,
 ): Promise<DownstreamMcpClientLike> {
   const client = new Client({
     name: 'omni-mcp-gateway-federation',
@@ -244,19 +291,20 @@ async function defaultClientFactory(
   });
 
   if (server.transport === 'http') {
+    const resolvedHeaders = resolveDownstreamServerHeaders(server, env);
     const transport = new StreamableHTTPClientTransport(new URL(server.url!), {
-      requestInit: server.headers ? { headers: server.headers } : undefined,
+      requestInit: resolvedHeaders ? { headers: resolvedHeaders } : undefined,
     });
     await client.connect(transport);
   } else {
-    const env = {
+    const procEnv = {
       ...buildSandboxedEnv(),
       ...(server.env ?? {}),
     };
     const transport = new StdioClientTransport({
       command: server.command!,
       args: server.args ?? [],
-      env,
+      env: procEnv,
     });
     await client.connect(transport);
   }
@@ -278,6 +326,7 @@ export class DownstreamMcpBridge {
   private readonly scrubber: ScrubberLike;
   private readonly policy: ApprovalGatePolicy;
   private readonly clientFactory: DownstreamClientFactory;
+  private readonly env: Record<string, string | undefined>;
 
   constructor(options: DownstreamMcpBridgeOptions = {}) {
     const loaded = loadDownstreamServerConfigs(options);
@@ -287,7 +336,9 @@ export class DownstreamMcpBridge {
     this.planTtlMs = options.planTtlMs ?? DEFAULT_DOWNSTREAM_PLAN_TTL_MS;
     this.scrubber = options.scrubber ?? new SecretScrubber();
     this.policy = options.policy ?? defaultApprovalGatePolicy;
-    this.clientFactory = options.clientFactory ?? defaultClientFactory;
+    this.env = options.env ?? process.env;
+    this.clientFactory =
+      options.clientFactory ?? ((srv) => defaultClientFactory(srv, this.env));
   }
 
   static fromConfig(
@@ -330,7 +381,16 @@ export class DownstreamMcpBridge {
     const inFlight = this.connectingClients.get(server.id);
     if (inFlight) return inFlight;
 
-    const rawConnectPromise = Promise.resolve(this.clientFactory(server));
+    const resolvedHeaders =
+      server.transport === 'http'
+        ? resolveDownstreamServerHeaders(server, this.env)
+        : server.headers;
+    const serverForFactory: DownstreamMcpServerConfig = {
+      ...server,
+      ...(resolvedHeaders ? { headers: resolvedHeaders } : {}),
+    };
+
+    const rawConnectPromise = Promise.resolve(this.clientFactory(serverForFactory));
     let timedOutOrFailed = false;
 
     const trackedPromise = withTimeout(

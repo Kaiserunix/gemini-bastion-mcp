@@ -1351,4 +1351,83 @@ describe('DownstreamMcpBridge', () => {
     expect(slowCloseSpy).toHaveBeenCalledTimes(1);
     await slowBridge.closeAll();
   });
+
+  it('injects Authorization Bearer from authToken and authTokenEnv, fails closed if env missing, and never leaks tokens in listDownstreamTools', async () => {
+    const seenHeaders: Array<Record<string, string> | undefined> = [];
+
+    const bridge = new DownstreamMcpBridge({
+      servers: [
+        {
+          id: 'literal-auth',
+          transport: 'http',
+          url: 'http://ops-1:9000/mcp',
+          authToken: 'literal_ops_token_24_chars_min',
+          readonlyTools: ['ping'],
+          mutatingTools: [],
+          deniedTools: [],
+        },
+        {
+          id: 'env-auth',
+          transport: 'http',
+          url: 'http://ops-2:9000/mcp',
+          authTokenEnv: 'OPS_MCP_AUTH_TOKEN',
+          headers: { 'x-custom': 'yes' },
+          readonlyTools: ['ping'],
+          mutatingTools: [],
+          deniedTools: [],
+        },
+      ],
+      env: { OPS_MCP_AUTH_TOKEN: 'env_secret_ops_token_123456789' },
+      clientFactory: async (server) => {
+        seenHeaders.push(server.headers);
+        return {
+          listTools: async () => ({ tools: [{ name: 'ping', description: 'Health ping' }] }),
+          callTool: async () => ({ content: [{ type: 'text', text: 'pong' }] }),
+          close: async () => {},
+        };
+      },
+    });
+
+    const listed = await bridge.listDownstreamTools();
+    expect(listed).toHaveLength(2);
+    const listedSerialized = JSON.stringify(listed);
+    expect(listedSerialized).not.toContain('literal_ops_token_24_chars_min');
+    expect(listedSerialized).not.toContain('env_secret_ops_token_123456789');
+    expect(listedSerialized).not.toContain('Authorization');
+    expect(listedSerialized).not.toContain('authToken');
+
+    expect(seenHeaders[0]).toEqual({ Authorization: 'Bearer literal_ops_token_24_chars_min' });
+    expect(seenHeaders[1]).toEqual({
+      'x-custom': 'yes',
+      Authorization: 'Bearer env_secret_ops_token_123456789',
+    });
+
+    await bridge.closeAll();
+
+    // Fail closed when authTokenEnv is configured but missing/empty
+    const missingEnvBridge = new DownstreamMcpBridge({
+      servers: [
+        {
+          id: 'missing-env-auth',
+          transport: 'http',
+          url: 'http://ops-3:9000/mcp',
+          authTokenEnv: 'MISSING_OPS_TOKEN',
+          readonlyTools: ['ping'],
+          mutatingTools: [],
+          deniedTools: [],
+        },
+      ],
+      env: {},
+      clientFactory: async () => ({
+        listTools: async () => ({ tools: [] }),
+        callTool: async () => ({ content: [{ type: 'text', text: 'should never connect' }] }),
+        close: async () => {},
+      }),
+    });
+
+    await expect(
+      missingEnvBridge.callReadonlyTool('missing-env-auth', 'ping', {}),
+    ).rejects.toThrow(/MISSING_OPS_TOKEN.*missing or empty/i);
+    await missingEnvBridge.closeAll();
+  });
 });
