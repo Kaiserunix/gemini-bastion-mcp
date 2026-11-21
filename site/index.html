@@ -734,6 +734,7 @@
         <a class="btn" href="#drivers" data-i18n="cta_drivers">4 Agent Drivers</a>
         <a class="btn" href="#tools" data-i18n="cta_tools">Explore 10 Tools</a>
         <a class="btn" href="https://github.com/Kaiserunix/gemini-bastion-mcp" target="_blank" rel="noopener noreferrer" data-i18n="cta_github">View on GitHub</a>
+        <a class="btn" href="https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose" target="_blank" rel="noopener noreferrer" data-i18n="cta_issue">💬 Open an Issue</a>
       </div>
       <div class="portal-notice" data-i18n="hero_notice">
         ℹ️ This GitHub Pages site is the static documentation &amp; interactive architecture showcase portal (Official MCP Registry ID: io.github.kaiserunix/gemini-bastion-mcp). The live Streamable HTTP /mcp gateway and /admin PWA run self-hosted on your own Docker host or VPS.
@@ -1093,6 +1094,9 @@
           <p data-i18n="sec_6_d">Supports PKCE (S256), RFC 8707 Resource Indicators, 60s refresh token family rotation, untrusted prompt-injection boundaries, plus fail-closed Google &amp; GitHub OAuth operator login.</p>
         </article>
       </div>
+      <div class="portal-notice" style="max-width:100%;margin-top:16px;text-align:left;" data-i18n="sec_policy_note">
+        🛡️ Official Protocol Compliance &amp; Data Privacy Reminder: GeminiBastionMCP uses 100% official MCP 2025-11-25 Streamable HTTP and OAuth 2.1 DCR/PKCE standards (zero browser scraping or cookie hijacking). Because tool outputs returned to consumer web AI chats are processed under that AI provider's privacy policy, avoid connecting regulated PII or strictly confidential corporate repos to personal consumer accounts and keep SecretScrubber enabled.
+      </div>
     </section>
 
     <!-- 1-Minute Zero-Build Quick Start -->
@@ -1146,6 +1150,17 @@ https://mcp.yourdomain.com/mcp
 # Recommended Client Tool Permission Policy:
 # - Tools 1..9 (workspace_manage .. stage_mutation_plan) -> Always Allow (0 popups)
 # - Tool 10 (publish_changes)                            -> Ask Before Running (Single Write Gate)</pre>
+        </div>
+      </div>
+
+      <div class="qs-card" style="margin-top:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;border-color:var(--border-hi);">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:1.02rem;" data-i18n="community_cta_title">💬 Feedback, Issues &amp; Contributions Welcome!</h3>
+          <p style="margin:0;font-size:0.88rem;color:var(--muted);" data-i18n="community_cta_desc">Found an OAuth quirk in Gemini/Claude/ChatGPT, want a new agent driver, or have a feature request? Open an issue or join GitHub Discussions.</p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a class="btn btn-primary" href="https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose" target="_blank" rel="noopener noreferrer" data-i18n="cta_issue">💬 Open an Issue</a>
+          <a class="btn" href="https://github.com/Kaiserunix/gemini-bastion-mcp/discussions" target="_blank" rel="noopener noreferrer" data-i18n="cta_discussions">💡 GitHub Discussions</a>
         </div>
       </div>
     </section>
@@ -1405,6 +1420,11 @@ https://mcp.yourdomain.com/mcp
           qs_step1: '1. Pull Pre-Built GHCR Image (:lite ~300MB or :full) & Generate Secrets',
           qs_step2: '2. Launch Docker Compose Stack (Optional --profile ops or --profile isolated-runner)',
           qs_step3: '3. Connect Web Gemini (gemini.google.com), Claude.ai & ChatGPT',
+          cta_issue: '💬 Open an Issue',
+          cta_discussions: '💡 GitHub Discussions',
+          sec_policy_note: '🛡️ Official Protocol Compliance & Data Privacy Reminder: GeminiBastionMCP uses 100% official MCP 2025-11-25 Streamable HTTP and OAuth 2.1 DCR/PKCE standards (zero browser scraping or cookie hijacking). Because tool outputs returned to consumer web AI chats are processed under that AI provider\'s privacy policy, avoid connecting regulated PII or strictly confidential corporate repos to personal consumer accounts and keep SecretScrubber enabled.',
+          community_cta_title: '💬 Feedback, Issues & Contributions Welcome!',
+          community_cta_desc: 'Found an OAuth quirk in Gemini/Claude/ChatGPT, want a new agent driver, or have a feature request? Open an issue or join GitHub Discussions.',
           btn_copy: 'Copy'
         },
         zh: {
@@ -1515,6 +1535,11 @@ https://mcp.yourdomain.com/mcp
           qs_step1: '1. 拉取 GHCR 预构建镜像 (:lite ~300MB 或 :full) 并生成密钥',
           qs_step2: '2. 启动 Docker Compose 容器栈（可选 --profile ops 或 --profile isolated-runner）',
           qs_step3: '3. 连接 Web Gemini (gemini.google.com)、Claude.ai 与 ChatGPT',
+          cta_issue: '💬 欢迎提 Issue',
+          cta_discussions: '💡 GitHub 讨论区',
+          sec_policy_note: '🛡️ 官方协议合规与数据隐私提示：GeminiBastionMCP 严格基于官方 MCP 2025-11-25 Streamable HTTP 与 OAuth 2.1 DCR/PKCE 标准实现（零浏览器自动化抓取或 Cookie 劫持）。鉴于返回至消费级网页 AI 的工具输出受对应 AI 平台隐私与活动策略管辖，请勿将受监管敏感个人数据 (PII) 或机密企业仓库接入个人消费级账号，并请始终保持内置 SecretScrubber 脱敏开启。',
+          community_cta_title: '💬 欢迎提 Issue、需求反馈与 PR 贡献！',
+          community_cta_desc: '无论遇到 Gemini/Claude/ChatGPT 客户端 OAuth 兼容性问题、希望接入新的智能体驱动，还是有新功能建议，都欢迎随时提交 Issue 或参与 GitHub Discussions。',
           btn_copy: '复制'
         }
       };

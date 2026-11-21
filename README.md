@@ -17,6 +17,7 @@
 [![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
 [![MCP 2025-11-25](https://img.shields.io/badge/MCP-2025--11--25%20Streamable%20HTTP-3b82f6?style=flat-square)](https://modelcontextprotocol.io)
 [![OAuth 2.1 + PKCE + DCR](https://img.shields.io/badge/OAuth%202.1-PKCE%20%2B%20DCR%20%2B%20RFC%208707-10b981?style=flat-square)](#connecting-ai-clients)
+[![Issues Welcome](https://img.shields.io/badge/Issues-Welcome-f59e0b?style=flat-square)](https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose)
 [![License: MIT](https://img.shields.io/badge/License-MIT-64748b?style=flat-square)](LICENSE)
 
 **English | [简体中文](README.zh-CN.md)**
@@ -313,6 +314,9 @@ In addition to `ADMIN_PASSWORD_HASH`, you can enable **Google OAuth** and/or **G
 5. **Non-Destructive Git Checkpoints & Protected Branch Guard**: Pre-patch and pre-agent snapshots use a temporary `GIT_INDEX_FILE` (`refs/mcp-checkpoints/*`). `publish_changes` blocks direct pushes to `main`/`master`/default and blocks sensitive files (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `.dev.vars*`).
 6. **OAuth 2.1 Family Rotation & Untrusted Boundary**: Refresh token reuse outside the 60s grace window revokes the entire family; external GitHub/Cloudflare/MCP-2 data is wrapped as untrusted content.
 
+> [!NOTE]
+> **Data Privacy & Platform Policy Note**: `GeminiBastionMCP` uses **official** Custom Connected Apps / MCP Streamable HTTP + OAuth 2.1 protocols only (never browser automation, scraping, or cookie-hijacking against consumer web apps). Tool outputs returned to consumer web AI chats are processed under that AI provider's activity and privacy policy — avoid connecting regulated PII or strictly confidential corporate repositories to personal consumer accounts, and keep the built-in sensitive-file blacklist and `SecretScrubber` enabled.
+
 <details>
 <summary><strong>Running Optional Sidecars (<code>--profile isolated-runner</code>, <code>--profile ops</code> &amp; Webhooks)</strong></summary>
 
@@ -342,7 +346,11 @@ In addition to `ADMIN_PASSWORD_HASH`, you can enable **Google OAuth** and/or **G
 
 ---
 
-## Roadmap, Contributing & Security
+## Feedback, Issues & Contributions Welcome
+
+> [!TIP]
+> **Have a bug report, new agent driver idea, or client OAuth quirk (Gemini / Claude / ChatGPT)?**
+> Please [open a GitHub Issue](https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose), submit a PR, or start a thread in [GitHub Discussions](https://github.com/Kaiserunix/gemini-bastion-mcp/discussions) — community feedback directly shapes our next release!
 
 - **Roadmap**: Per-job ephemeral container/microVM worker isolation (`v0.3`) and multi-operator RBAC policies.
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, architectural guardrails, and PR checklist.

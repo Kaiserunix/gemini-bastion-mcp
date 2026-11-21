@@ -17,6 +17,7 @@
 [![Node.js >= 22.23.4](https://img.shields.io/badge/Node.js-%3E%3D%2022.23.4%20LTS-22c55e?style=flat-square)](docker/Dockerfile)
 [![MCP 2025-11-25](https://img.shields.io/badge/MCP-2025--11--25%20Streamable%20HTTP-3b82f6?style=flat-square)](https://modelcontextprotocol.io)
 [![OAuth 2.1 + PKCE + DCR](https://img.shields.io/badge/OAuth%202.1-PKCE%20%2B%20DCR%20%2B%20RFC%208707-10b981?style=flat-square)](#连接-ai-客户端)
+[![Issues Welcome](https://img.shields.io/badge/Issues-Welcome-f59e0b?style=flat-square)](https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose)
 [![License: MIT](https://img.shields.io/badge/License-MIT-64748b?style=flat-square)](LICENSE)
 
 **[English](README.md) | 简体中文**
@@ -313,6 +314,9 @@ npm run dev
 5. **非破坏性 Git 快照 & 受保护分支拦截**：每次 `code_patch` 与智能体写入前使用临时 `GIT_INDEX_FILE` 创建 `refs/mcp-checkpoints/*` 快照；`publish_changes` 物理拦截直推 `main`/`master`/默认分支及敏感文件提交。
 6. **OAuth 2.1 令牌家族轮换 & 不可信内容边界**：Refresh Token 超出 60 秒宽限期重放立即吊销整条家族；外部 GitHub/Cloudflare/MCP-2 响应统一封装为不可信内容边界。
 
+> [!NOTE]
+> **数据隐私与平台合规提示**：`GeminiBastionMCP` 仅通过**官方** Custom Connected Apps / MCP Streamable HTTP 与 OAuth 2.1 协议接入（绝不使用浏览器自动化、网页抓取或 Cookie 劫持消费级网页端）。返回给消费级 Web AI 对话框的工具输出将受对应 AI 服务商的隐私与活动记录政策约束——请勿将受监管的 PII 或高度机密的公司代码库接入个人消费级账号，并始终开启内置敏感文件黑名单与 `SecretScrubber`。
+
 <details>
 <summary><strong>启用可选 Sidecar（<code>--profile isolated-runner</code>、<code>--profile ops</code> 与 Webhook）</strong></summary>
 
@@ -342,7 +346,11 @@ npm run dev
 
 ---
 
-## 路线图、贡献与安全规范
+## 欢迎提 Issue、需求与 PR
+
+> [!TIP]
+> **遇到 Bug、想新增智能体驱动，或在 Gemini / Claude / ChatGPT 接入中遇到 OAuth 兼容细节？**
+> 欢迎随时 [提交 GitHub Issue](https://github.com/Kaiserunix/gemini-bastion-mcp/issues/new/choose)、发起 PR，或在 [GitHub Discussions](https://github.com/Kaiserunix/gemini-bastion-mcp/discussions) 交流讨论——社区反馈将直接驱动下一版本迭代！
 
 - **路线图**：每任务独立容器 / microVM 隔离沙盒（`v0.3`）以及多管理员 RBAC 策略。
 - **参与贡献**：请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发环境配置、架构红线与 PR 检查清单。
