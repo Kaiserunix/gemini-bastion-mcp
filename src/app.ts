@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import { Hono } from 'hono';
 import { createAdminApp } from './admin/index.js';
-import { createAuthApp, createBearerMiddleware, ensureStaticClient } from './auth/index.js';
+import {
+  createAuthApp,
+  createBearerMiddleware,
+  ensureStaticClient,
+  SignedCookieAdminSessionManager,
+  type AdminSessionManager,
+  type OAuthStore,
+} from './auth/index.js';
 import { loadConfig } from './config.js';
 import { CloudflareService } from './core/cloudflareService.js';
 import { CodexSdkRunner, reconcileOrphanJobs } from './core/codexRunner.js';
@@ -14,12 +21,22 @@ import { WorkspaceLockManager, workspaceLockManager } from './core/workspaceLock
 import { createRepositories, type Repositories } from './db/repositories/index.js';
 import { openDatabase, type GatewayDatabase } from './db/sqlite.js';
 import {
+  defaultWorkspaceToolAdapter,
+  type WorkspaceToolAdapter,
+} from './mcp/adapters/index.js';
+import {
   buildPublicGatewayStatusJson,
   LANDING_PAGE_CSP,
   renderPublicLandingPageHtml,
 } from './mcp/landingPage.js';
 import { createMcpHttpHandler } from './mcp/server.js';
 import type { McpToolDeps } from './mcp/tools/index.js';
+import {
+  DefaultApprovalGatePolicy,
+  MutationPlanGate,
+  type ApprovalGatePolicy,
+  type MutationTargetAdapter,
+} from './policy/index.js';
 import type { GatewayConfig, ScrubberLike } from './types.js';
 import { createSecretScrubber } from './utils/secretScrubber.js';
 
@@ -29,12 +46,18 @@ export interface CreateGatewayAppOptions {
   dbPath?: string;
   scrubber?: ScrubberLike;
   lockManager?: WorkspaceLockManager;
+  oauthStore?: OAuthStore;
+  sessionManager?: AdminSessionManager;
+  approvalPolicy?: ApprovalGatePolicy;
+  planGate?: MutationPlanGate;
+  workspaceAdapter?: WorkspaceToolAdapter;
   githubService?: GitHubService;
   cloudflareService?: CloudflareService;
   downstreamBridge?: DownstreamMcpBridge;
   codexRunner?: CodexSdkRunner;
   rateLimitMaxAttempts?: number;
   rateLimitWindowMs?: number;
+  mcpMaxBodyBytes?: number;
 }
 
 export interface GatewayAppInstance {
@@ -42,6 +65,11 @@ export interface GatewayAppInstance {
   config: GatewayConfig;
   db: GatewayDatabase;
   repos: Repositories;
+  oauthStore: OAuthStore;
+  sessionManager: AdminSessionManager;
+  approvalPolicy: ApprovalGatePolicy;
+  planGate: MutationPlanGate;
+  workspaceAdapter: WorkspaceToolAdapter;
   scrubber: ScrubberLike;
   lockManager: WorkspaceLockManager;
   githubService: GitHubService;
@@ -71,10 +99,17 @@ export function createGatewayApp(
 
   const db = openDatabase(options.dbPath ?? config.databasePath);
   const repos = createRepositories(db);
+  const oauthStore: OAuthStore = options.oauthStore ?? repos.oauth;
+  const sessionManager: AdminSessionManager =
+    options.sessionManager ?? new SignedCookieAdminSessionManager(config);
+  const approvalPolicy: ApprovalGatePolicy =
+    options.approvalPolicy ?? new DefaultApprovalGatePolicy();
+  const workspaceAdapter: WorkspaceToolAdapter =
+    options.workspaceAdapter ?? defaultWorkspaceToolAdapter;
   const scrubber = options.scrubber ?? createSecretScrubber(config, options.env ?? process.env);
   const lockManager = options.lockManager ?? workspaceLockManager;
 
-  ensureStaticClient(config, repos.oauth);
+  ensureStaticClient(config, oauthStore);
   reconcileOrphanJobs(repos.jobs);
 
   const githubService =
@@ -82,13 +117,33 @@ export function createGatewayApp(
     new GitHubService({
       token: config.ghToken,
       scrubber,
+      policy: approvalPolicy,
     });
 
   const cloudflareService =
-    options.cloudflareService ?? CloudflareService.fromConfig(config, scrubber);
+    options.cloudflareService ?? CloudflareService.fromConfig(config, scrubber, approvalPolicy);
 
   const downstreamBridge =
-    options.downstreamBridge ?? DownstreamMcpBridge.fromConfig(config, scrubber);
+    options.downstreamBridge ??
+    DownstreamMcpBridge.fromConfig(config, scrubber, undefined, approvalPolicy);
+
+  const gateAdapters: MutationTargetAdapter[] = [];
+  if (typeof cloudflareService.asMutationTargetAdapter === 'function') {
+    gateAdapters.push(cloudflareService.asMutationTargetAdapter());
+  }
+  if (typeof downstreamBridge.asMutationTargetAdapter === 'function') {
+    gateAdapters.push(downstreamBridge.asMutationTargetAdapter());
+  }
+
+  const planGate =
+    options.planGate ??
+    new MutationPlanGate({
+      planStore: repos.plans,
+      auditLogger: repos.audit,
+      policy: approvalPolicy,
+      scrubber,
+      adapters: gateAdapters,
+    });
 
   const codexRunner =
     options.codexRunner ??
@@ -114,6 +169,9 @@ export function createGatewayApp(
     cloudflareService,
     downstreamBridge,
     codexRunner,
+    workspaceAdapter,
+    approvalPolicy,
+    planGate,
     notifyWebhook,
   };
 
@@ -189,6 +247,9 @@ export function createGatewayApp(
       config,
       db,
       repos,
+      oauthStore,
+      auditLogger: repos.audit,
+      sessionManager,
       rateLimitMaxAttempts: options.rateLimitMaxAttempts,
       rateLimitWindowMs: options.rateLimitWindowMs,
     }),
@@ -200,6 +261,7 @@ export function createGatewayApp(
       config,
       repos,
       scrubber,
+      sessionManager,
       rateLimitMaxAttempts: options.rateLimitMaxAttempts,
       rateLimitWindowMs: options.rateLimitWindowMs,
       cancelJob: async (jobId: string) => {
@@ -219,9 +281,9 @@ export function createGatewayApp(
     }),
   );
 
-  const bearerMiddleware = createBearerMiddleware({ config, repos });
+  const bearerMiddleware = createBearerMiddleware({ config, repos, oauthStore });
   app.use('/mcp', bearerMiddleware);
-  app.all('/mcp', createMcpHttpHandler(mcpDeps));
+  app.all('/mcp', createMcpHttpHandler(mcpDeps, { maxBodyBytes: options.mcpMaxBodyBytes }));
 
   app.onError((err, c) => {
     const safeMsg = scrubber.scrub(err instanceof Error ? err.message : String(err));
@@ -239,7 +301,7 @@ export function createGatewayApp(
   const cleanupIntervalMs = 15 * 60 * 1000;
   const cleanupTimer = setInterval(() => {
     try {
-      repos.oauth.purgeExpired();
+      oauthStore.purgeExpired();
       repos.plans.expireStalePlans();
     } catch {
       // Non-fatal periodic cleanup
@@ -268,6 +330,11 @@ export function createGatewayApp(
     config,
     db,
     repos,
+    oauthStore,
+    sessionManager,
+    approvalPolicy,
+    planGate,
+    workspaceAdapter,
     scrubber,
     lockManager,
     githubService,

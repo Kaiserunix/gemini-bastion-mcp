@@ -1,11 +1,20 @@
-import type { CloudflareService } from '../../core/cloudflareService.js';
-import type { CodexSdkRunner } from '../../core/codexRunner.js';
-import type { DownstreamMcpBridge } from '../../core/downstreamMcpBridge.js';
-import type { GitHubService } from '../../core/githubService.js';
 import type { WorkspaceLockManager } from '../../core/workspaceLock.js';
 import type { GatewayDatabase } from '../../db/sqlite.js';
 import type { Repositories } from '../../db/repositories/index.js';
+import {
+  defaultApprovalGatePolicy,
+  type ApprovalGatePolicy,
+  type MutationPlanGate,
+} from '../../policy/index.js';
 import type { GatewayConfig, ScrubberLike } from '../../types.js';
+import {
+  defaultWorkspaceToolAdapter,
+  type AgentRunnerAdapter,
+  type CloudflareToolAdapter,
+  type DownstreamMcpToolAdapter,
+  type GitHubToolAdapter,
+  type WorkspaceToolAdapter,
+} from '../adapters/index.js';
 import type { GuardTextOutputOptions } from '../outputGuard.js';
 
 export interface McpToolDeps {
@@ -14,12 +23,23 @@ export interface McpToolDeps {
   repos: Repositories;
   scrubber: ScrubberLike;
   lockManager: WorkspaceLockManager;
-  githubService: GitHubService;
-  cloudflareService: CloudflareService;
-  downstreamBridge: DownstreamMcpBridge;
-  codexRunner: CodexSdkRunner;
+  githubService: GitHubToolAdapter;
+  cloudflareService: CloudflareToolAdapter;
+  downstreamBridge: DownstreamMcpToolAdapter;
+  codexRunner: AgentRunnerAdapter;
+  workspaceAdapter?: WorkspaceToolAdapter;
+  approvalPolicy?: ApprovalGatePolicy;
+  planGate?: MutationPlanGate;
   actor?: string;
   notifyWebhook?: (event: string, payload: Record<string, unknown>) => Promise<void>;
+}
+
+export function getWorkspaceAdapter(deps: McpToolDeps): WorkspaceToolAdapter {
+  return deps.workspaceAdapter ?? defaultWorkspaceToolAdapter;
+}
+
+export function getApprovalPolicy(deps: McpToolDeps): ApprovalGatePolicy {
+  return deps.approvalPolicy ?? defaultApprovalGatePolicy;
 }
 
 export function buildGuardOptions(
@@ -34,6 +54,7 @@ export function buildGuardOptions(
     label,
     maxBytes: deps.config.inlineOutputMaxBytes ?? 60_000,
     untrustedSource,
+    policy: getApprovalPolicy(deps),
   };
 }
 

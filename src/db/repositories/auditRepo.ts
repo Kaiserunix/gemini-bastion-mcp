@@ -1,3 +1,4 @@
+import type { AuditLogger } from '../../auth/store.js';
 import type { GatewayDatabase } from '../sqlite.js';
 import type { AuditLogRecord } from '../../types.js';
 
@@ -23,7 +24,7 @@ function mapAuditLog(row: AuditLogRow): AuditLogRecord {
   };
 }
 
-export class AuditRepository {
+export class AuditRepository implements AuditLogger {
   constructor(private readonly db: GatewayDatabase) {}
 
   record(input: {

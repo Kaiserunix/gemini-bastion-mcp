@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import type { RateLimiter } from './store.js';
 
 export const MAX_AUTH_BODY_BYTES = 65_536;
 
@@ -80,7 +81,7 @@ export function getClientIp(c: Context, trustCfConnectingIp: boolean): string {
 /**
  * In-memory fixed-window rate limiter keyed by client IP.
  */
-export class IpRateLimiter {
+export class IpRateLimiter implements RateLimiter {
   private readonly buckets = new Map<string, { count: number; resetAt: number }>();
 
   constructor(

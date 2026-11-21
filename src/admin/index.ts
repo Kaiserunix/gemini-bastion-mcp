@@ -15,6 +15,11 @@ import {
   type AdminSessionPayload,
 } from '../auth/crypto.js';
 import { getClientIp, IpRateLimiter, readLimitedBodyText } from '../auth/rateLimit.js';
+import {
+  SignedCookieAdminSessionManager,
+  type AdminSessionManager,
+  type RateLimiter,
+} from '../auth/store.js';
 import { isGitHubOAuthEnabled, isGoogleOAuthEnabled } from '../config.js';
 import type { Repositories } from '../db/repositories/index.js';
 import type { GatewayConfig, ScrubberLike } from '../types.js';
@@ -37,6 +42,8 @@ export interface AdminDeps extends AdminCallbacks {
   config: GatewayConfig;
   repos: Repositories;
   scrubber?: ScrubberLike;
+  sessionManager?: AdminSessionManager;
+  rateLimiter?: RateLimiter;
   rateLimitMaxAttempts?: number;
   rateLimitWindowMs?: number;
   ssePollIntervalMs?: number;
@@ -75,12 +82,15 @@ function parseLimit(raw: string | undefined, fallback = 50, max = 200): number {
 export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariables }> {
   const { config, repos } = deps;
   const scrubber = deps.scrubber ?? createSecretScrubber(config);
+  const sessionManager = deps.sessionManager ?? new SignedCookieAdminSessionManager(config);
   const googleEnabled = isGoogleOAuthEnabled(config);
   const githubEnabled = isGitHubOAuthEnabled(config);
-  const loginRateLimiter = new IpRateLimiter(
-    deps.rateLimitMaxAttempts ?? 10,
-    deps.rateLimitWindowMs ?? 60_000,
-  );
+  const loginRateLimiter =
+    deps.rateLimiter ??
+    new IpRateLimiter(
+      deps.rateLimitMaxAttempts ?? 10,
+      deps.rateLimitWindowMs ?? 60_000,
+    );
   const ssePollIntervalMs = deps.ssePollIntervalMs ?? 1000;
 
   const app = new Hono<{ Variables: AdminVariables }>();
@@ -217,7 +227,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
     }
 
     const now = Date.now();
-    const sessionPayload = issueAdminSessionCookie(c, config, now);
+    const sessionPayload = issueAdminSessionCookie(c, config, now, sessionManager);
     clearAdminCsrfCookie(c);
 
     repos.audit.record({
@@ -237,7 +247,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   });
 
   app.post('/logout', async (c) => {
-    const session = readAdminSessionCookie(c, config);
+    const session = readAdminSessionCookie(c, config, Date.now(), sessionManager);
 
     if (session) {
       let submittedCsrf = c.req.header('x-csrf-token') ?? '';
@@ -280,7 +290,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   };
 
   app.get('/', (c) => {
-    const session = readAdminSessionCookie(c, config);
+    const session = readAdminSessionCookie(c, config, Date.now(), sessionManager);
     if (!session) {
       return c.redirect('/admin/login', 302);
     }
@@ -298,7 +308,7 @@ export function createAdminApp(deps: AdminDeps): Hono<{ Variables: AdminVariable
   });
 
   app.use('/api/*', async (c, next) => {
-    const session = readAdminSessionCookie(c, config);
+    const session = readAdminSessionCookie(c, config, Date.now(), sessionManager);
     if (!session) {
       return c.json({ error: 'unauthorized' }, 401);
     }

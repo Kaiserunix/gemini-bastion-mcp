@@ -7,6 +7,8 @@ const DEFAULT_ALLOWED_REDIRECT_HOSTS = [
   'gemini.google.com',
   'aistudio.google.com',
   'accounts.google.com',
+  'claude.ai',
+  'chatgpt.com',
   'localhost',
   '127.0.0.1',
 ];

@@ -102,6 +102,7 @@ export interface OAuthCode {
   resource: string | null;
   expires_at: number;
   used: boolean;
+  issued_family_id?: string | null;
 }
 
 export type OAuthTokenType = 'access' | 'refresh';
