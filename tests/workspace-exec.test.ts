@@ -7,6 +7,7 @@ import { cancelActiveJob, workspaceExec } from '../src/core/workspaceExec.js';
 import { WorkspaceLockManager } from '../src/core/workspaceLock.js';
 import { createRepositories } from '../src/db/repositories/index.js';
 import { openDatabase } from '../src/db/sqlite.js';
+import { buildBwrapArgs } from '../src/utils/exec.js';
 
 const tempDirs: string[] = [];
 
@@ -287,6 +288,73 @@ describe('workspaceExec', () => {
     ).rejects.toThrow('Simulated SQLite write failure');
 
     expect(lockMgr.getLockInfo(slug).hasActiveWriter).toBe(false);
+    db.close();
+  });
+
+  it('builds per-workspace bwrap isolation args hiding sibling workspaces and /data with --unshare-net by default', async () => {
+    const restrictedArgs = buildBwrapArgs(
+      {
+        enabled: true,
+        workspaceDir: '/workspaces/my-app',
+        workspacesRoot: '/workspaces',
+        dataDir: '/data',
+        allowNetwork: false,
+      },
+      ['/bin/sh', '-c', 'echo hi'],
+    );
+
+    expect(restrictedArgs).toContain('--die-with-parent');
+    expect(restrictedArgs).toContain('--unshare-net');
+    expect(restrictedArgs.join(' ')).toContain('--tmpfs /workspaces');
+    expect(restrictedArgs.join(' ')).toContain('--tmpfs /data');
+    expect(restrictedArgs.join(' ')).toContain('--bind /workspaces/my-app /workspaces/my-app');
+    expect(restrictedArgs.join(' ')).toContain('--chdir /workspaces/my-app');
+    expect(restrictedArgs.slice(-4)).toEqual(['--', '/bin/sh', '-c', 'echo hi']);
+
+    const networkArgs = buildBwrapArgs(
+      {
+        enabled: true,
+        workspaceDir: '/workspaces/my-app',
+        workspacesRoot: '/workspaces',
+        dataDir: '/data',
+        allowNetwork: true,
+      },
+      ['npm', 'test'],
+    );
+    expect(networkArgs).not.toContain('--unshare-net');
+    expect(networkArgs.slice(-3)).toEqual(['--', 'npm', 'test']);
+
+    // Verify workspaceExec accepts allowNetwork option cleanly
+    const dataDir = makeTempDir('omni-data-');
+    const workspacesDir = makeTempDir('omni-ws-');
+    const slug = 'exec-net';
+    fs.mkdirSync(path.join(workspacesDir, slug), { recursive: true });
+
+    const config = loadConfig({
+      DATA_DIR: dataDir,
+      WORKSPACES_DIR: workspacesDir,
+      SANDBOX_BWRAP_ISOLATION: 'false',
+    });
+    const db = openDatabase(':memory:');
+    const repos = createRepositories(db);
+    const lockMgr = new WorkspaceLockManager();
+
+    const syncRes = await workspaceExec({
+      config,
+      slug,
+      command: process.execPath,
+      args: ['-e', 'console.log("net-ok")'],
+      shell: false,
+      allowNetwork: true,
+      waitMs: 5000,
+      jobRepo: repos.jobs,
+      lockManager: lockMgr,
+    });
+    expect(syncRes.mode).toBe('sync');
+    if (syncRes.mode === 'sync') {
+      expect(syncRes.stdout.trim()).toBe('net-ok');
+    }
+
     db.close();
   });
 });

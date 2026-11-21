@@ -15,6 +15,7 @@ import {
   DownstreamMcpBridge,
   type DownstreamMcpClientLike,
 } from '../src/core/downstreamMcpBridge.js';
+import type { AgentRunOptions, AgentRunner } from '../src/types.js';
 
 const tempDirs: string[] = [];
 const gateways: GatewayAppInstance[] = [];
@@ -265,11 +266,23 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
       clientFactory: async () => downstreamClient,
     });
 
+    const agentRunSpy = vi.fn(async (opts: AgentRunOptions) => ({
+      status: 'completed' as const,
+      threadId: `thread-${opts.driver ?? 'codex'}`,
+      finalReport: `Completed ${opts.driver ?? 'codex'} (${opts.mode})`,
+      tokenUsage: { input_tokens: 10, output_tokens: 20, total_tokens: 30 },
+    }));
+    const mockAgentRunner: AgentRunner = {
+      name: 'mock-agent-registry',
+      run: agentRunSpy,
+    };
+
     const gateway = createGatewayApp({
       config,
       dbPath: ':memory:',
       cloudflareService,
       downstreamBridge,
+      agentRunner: mockAgentRunner,
     });
     gateways.push(gateway);
 
@@ -523,10 +536,11 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(artifactSlice.content[0].text).toContain(`# Artifact: ${artifactMatch![1]}`);
     expect(artifactSlice.content[0].text).toContain('Offset: 25000');
 
-    // workspace_exec verifies secret isolation (process.env does NOT contain GH_TOKEN or CLOUDFLARE_API_TOKEN)
+    // workspace_exec verifies secret isolation (process.env does NOT contain GH_TOKEN or CLOUDFLARE_API_TOKEN) and allow_network param
     const execRes = await callMcpTool(gateway, accessToken, 'workspace_exec', {
       slug: 'demo-repo',
       command: `node -e "console.log('GH=' + Boolean(process.env.GH_TOKEN) + ',CF=' + Boolean(process.env.CLOUDFLARE_API_TOKEN))"`,
+      allow_network: true,
     });
     expect(execRes.isError).toBeUndefined();
     expect(execRes.content[0].text).toContain('GH=false,CF=false');
@@ -655,6 +669,24 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(cancelStatus.isError).toBeUndefined();
     expect(cancelStatus.content[0].text).toContain('Status: cancelled');
 
+    // 9b. Multi-driver dispatch_runner (runner_type: "agent_readonly", agent_driver: "claude_code")
+    const agentDispatchRes = await callMcpTool(gateway, accessToken, 'dispatch_runner', {
+      runner_type: 'agent_readonly',
+      agent_driver: 'claude_code',
+      slug: 'demo-repo',
+      objective: 'Summarize repository architecture',
+    });
+    expect(agentDispatchRes.isError).toBeUndefined();
+    expect(agentDispatchRes.content[0].text).toContain('driver=claude_code');
+    expect(agentRunSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceSlug: 'demo-repo',
+        mode: 'readonly',
+        driver: 'claude_code',
+        objective: 'Summarize repository architecture',
+      }),
+    );
+
     // 10. Public GET / Gateway Portal (HTML & JSON content negotiation, zero private data leakage)
     const landingHtmlRes = await gateway.app.request('https://mcp.example.com/', {
       headers: { accept: 'text/html' },
@@ -663,6 +695,10 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(landingHtmlRes.headers.get('content-security-policy')).toContain("script-src 'sha256-");
     const landingHtml = await landingHtmlRes.text();
     expect(landingHtml).toContain('GeminiBastionMCP');
+    expect(landingHtml).toContain('v0.2.0');
+    expect(landingHtml).toContain('Claude.ai');
+    expect(landingHtml).toContain('ChatGPT');
+    expect(landingHtml).toContain('bwrap');
     expect(landingHtml).toContain('https://mcp.example.com/mcp');
     expect(landingHtml).toContain('publish_changes');
     expect(landingHtml).not.toContain('onclick=');
@@ -678,6 +714,7 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(landingJson).toMatchObject({
       service: 'gemini-bastion-mcp',
       brand: 'GeminiBastionMCP',
+      version: '0.2.0',
       status: 'online',
       dbReady: true,
       mcpEndpoint: 'https://mcp.example.com/mcp',

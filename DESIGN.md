@@ -104,14 +104,16 @@ SQLite operates in WAL mode (`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = O
 ## 6. Security & Isolation Architecture
 
 ### 6.1 Secret Isolation & Scrubbing
-- **Gateway Process vs. Workspace Subprocesses**: `GH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_READONLY_API_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `OAUTH_SIGNING_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*` exist only in the gateway process.
+- **Gateway Process vs. Workspace Subprocesses**: `GH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_READONLY_API_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `AGENT_RUNNER_AUTH_TOKEN`, `OPS_MCP_AUTH_TOKEN`, `OAUTH_SIGNING_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*` exist only in the gateway process.
 - **`buildSandboxedEnv()` (`src/utils/exec.ts`)**: Constructs a minimal allowlist environment (`PATH`, `HOME`, `LANG`, toolchain caches) and rejects/strips all sensitive keys while enforcing `CI=true`, `DEBIAN_FRONTEND=noninteractive`, `GIT_TERMINAL_PROMPT=0`, `PAGER=cat`.
-- **`SecretScrubber` (`src/utils/secretScrubber.ts`)**: Collects all sensitive env/config values (`length >= 8`) plus regexes for `ghp_`, `gho_`, `github_pat_`, `sk-`, JWT `eyJ...`, `Bearer`/`Basic` headers, URL credentials, and Cloudflare tokens, replacing matches with `[REDACTED_SECRET]` across all MCP responses, artifacts, logs, and webhooks.
+- **`SecretScrubber` (`src/utils/secretScrubber.ts`)**: Collects all sensitive env/config values (`length >= 8`, including `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPS_MCP_AUTH_TOKEN`, `AGENT_RUNNER_AUTH_TOKEN`, and downstream MCP `authToken` / `Authorization` headers) plus regexes for `ghp_`, `gho_`, `github_pat_`, `sk-`, `AIza...`, JWT `eyJ...`, `Bearer`/`Basic` headers, URL credentials, and Cloudflare tokens, replacing matches with `[REDACTED_SECRET]` across all MCP responses, artifacts, logs, and webhooks.
 
-### 6.2 Filesystem & UID Separation
-- `/data` (SQLite DB + `/data/artifacts`) is owned by `gateway` (UID 1001, mode `0700`).
-- `/workspaces` and `/home/worker/.codex` are owned by `worker` (UID 1002).
-- `ARTIFACTS_DIR` is validated by `loadConfig()` to never reside inside `WORKSPACES_DIR`.
+### 6.2 Filesystem, UID & `bwrap` Namespace Separation (`v0.2.0`)
+- `/data` (SQLite DB, `/data/artifacts`, and `/data/codex`) is owned by `gateway` (UID 1001, mode `0700`).
+- `/workspaces` is owned by `worker` (UID 1002, group-writable `2775`).
+- `ARTIFACTS_DIR`, `DATA_DIR`, and `DATABASE_PATH` are canonicalized and validated by `loadConfig()` to never overlap `WORKSPACES_DIR`.
+- **Per-Workspace `bwrap` Isolation (`SANDBOX_BWRAP_ISOLATION` / `SANDBOX_STRICT_ISOLATION`)**: On Linux, after `sudo` drops privileges to `worker` UID 1002, `startSubprocess` probes and wraps commands in `/usr/bin/bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs <workspacesRoot> [--tmpfs <dataDir>] --bind <workspaceDir> <workspaceDir> --chdir <workspaceDir> [--unshare-net] -- <cmd>`. This prevents sibling workspace cross-reads and optionally disables network egress unless `allowNetwork` is true; when `SANDBOX_STRICT_ISOLATION=true`, unavailable namespaces fail closed instead of falling back.
+- **Optional Dedicated `isolated-runner` Sidecar (`AGENT_RUNNER_URL` + `AGENT_RUNNER_AUTH_TOKEN`)**: Allows offloading `agent_readonly` / `agent_write` / `codex_*` execution to an isolated container (`node dist/runner/sidecarServer.js`) running as UID 1002 with ONLY `mcp_workspaces:/workspaces` mounted (no `/data` SQLite DB, no gateway credentials) on an internal `runner_net`.
 - All workspace path operations resolve symlinks (`fs.realpath`) and verify containment within `/workspaces/{slug}`.
 
 ### 6.3 Non-Destructive Checkpoints (`GIT_INDEX_FILE`)
@@ -168,11 +170,11 @@ All 10 tools register explicit MCP annotations (`readOnlyHint`, `destructiveHint
 
 ### 5. `dispatch_runner`
 - **Annotations**: `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`
-- **Modes**:
-  - `codex_readonly`: Runs `@openai/codex-sdk` in `read-only` sandbox mode (for deep analysis, planning, audits).
-  - `codex_write`: Creates a pre-run git checkpoint, then runs `@openai/codex-sdk` in `workspace-write` mode.
+- **Modes & Multi-Agent Drivers (`v0.2.0`)**:
+  - `codex_readonly` / `agent_readonly`: Runs the selected agent driver (`codex` | `claude_code` | `gemini_cli` | `opencode`, defaulting to `DEFAULT_AGENT_DRIVER`) in read-only sandbox mode for deep analysis, planning, and audits.
+  - `codex_write` / `agent_write`: Creates a pre-run git checkpoint, then runs the selected agent driver in workspace-write mode (locally or via `AGENT_RUNNER_URL` `isolated-runner` sidecar).
   - `shell_task`: Launches a long-running background shell task tracked in SQLite `jobs`.
-- **Capabilities**: Supports `resume_thread_id` for continuing Codex threads, configurable `model`, `reasoning_effort`, `max_duration_sec`, `token_budget`, and real `AbortController` cancellation. Emits webhook notifications on completion/failure when `NOTIFY_WEBHOOK_URL` is configured.
+- **Capabilities**: Supports `driver`, `resume_thread_id` for continuing sessions, configurable `model`, `reasoning_effort`, `max_duration_sec`, `token_budget`, and real `AbortController` cancellation. Emits webhook notifications on completion/failure when `NOTIFY_WEBHOOK_URL` is configured.
 
 ### 6. `job_status`
 - **Annotations**: `readOnlyHint: true` (note: supports `cancel: true` for aborting a job), `destructiveHint: false`, `openWorldHint: false`
@@ -213,10 +215,11 @@ All 10 tools register explicit MCP annotations (`readOnlyHint`, `destructiveHint
 
 ---
 
-## 8. Downstream MCP-2 Federation
+## 8. Downstream MCP-2 Federation (`v0.2.0` Authenticated Sidecars)
 
 Configured via `DOWNSTREAM_MCPS_JSON` or `DOWNSTREAM_MCPS_FILE`:
 - Supports both `http` (Streamable HTTP over internal Docker network e.g. `ops_net`) and `stdio` transports.
+- Supports per-server Bearer token authentication (`authToken`, `authTokenEnv` e.g. `OPS_MCP_AUTH_TOKEN`, or `headers`) validated with `crypto.timingSafeEqual` by `ops-mcp-auth-proxy.mjs`.
 - Enforces per-server capability lists:
   - `deniedTools`: Always blocked.
   - `readonlyTools`: Callable via `infra_inspect` (`downstream_call`).

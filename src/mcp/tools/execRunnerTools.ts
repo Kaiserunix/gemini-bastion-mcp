@@ -11,7 +11,13 @@ import {
   workspaceExec,
 } from '../../core/workspaceExec.js';
 import { resolveWorkspaceRoot } from '../../core/workspaceLock.js';
-import { buildSandboxedEnv, runSubprocess, startSubprocess, type SubprocessHandle } from '../../utils/exec.js';
+import {
+  buildSandboxedEnv,
+  probeBwrapSupport,
+  runSubprocess,
+  startSubprocess,
+  type SubprocessHandle,
+} from '../../utils/exec.js';
 import { withMcpGuardrails } from '../outputGuard.js';
 import { buildGuardOptions, getToolActor, type McpToolDeps } from './context.js';
 
@@ -23,6 +29,7 @@ function launchBackgroundShellTask(
     workspaceDir: string;
     command: string;
     maxDurationSec?: number;
+    allowNetwork?: boolean;
   },
 ): void {
   const { jobId, slug, workspaceDir, command } = params;
@@ -56,6 +63,29 @@ function launchBackgroundShellTask(
         return;
       }
 
+      const bwrapEnabled = Boolean(deps.config.sandboxBwrapIsolation);
+      let realWorkspacesRoot = path.resolve(deps.config.workspacesDir);
+      try {
+        realWorkspacesRoot = fs.realpathSync(realWorkspacesRoot);
+      } catch {
+        // Keep path.resolve fallback if directory doesn't exist yet
+      }
+
+      if (bwrapEnabled && process.platform === 'linux') {
+        await probeBwrapSupport(undefined, deps.config.sandboxUid, deps.config.sandboxGid);
+      }
+
+      if (cancelled || abortController.signal.aborted) {
+        const updated = deps.repos.jobs.updateJob(jobId, {
+          status: 'cancelled',
+          error_message: 'Shell task was cancelled before starting',
+        });
+        if (updated) {
+          await notifyJobFinished(deps.config, updated, { scrubber: deps.scrubber });
+        }
+        return;
+      }
+
       deps.repos.jobs.updateJob(jobId, { status: 'running' });
       deps.repos.jobs.appendEvent(jobId, {
         ts: Date.now(),
@@ -72,6 +102,14 @@ function launchBackgroundShellTask(
         signal: abortController.signal,
         uid: deps.config.sandboxUid,
         gid: deps.config.sandboxGid,
+        bwrapIsolation: {
+          enabled: bwrapEnabled,
+          strict: Boolean(deps.config.sandboxStrictIsolation),
+          workspaceDir,
+          workspacesRoot: realWorkspacesRoot,
+          dataDir: deps.config.dataDir,
+          allowNetwork: Boolean(params.allowNetwork),
+        },
         onStdout: (chunk) => {
           const clean = deps.scrubber.scrub(chunk).trim();
           if (clean) {
@@ -182,6 +220,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
         args: z.array(z.string()).optional(),
         cwd: z.string().optional(),
         readonly: z.boolean().optional(),
+        allow_network: z.boolean().optional().default(false),
         wait_ms: z.number().int().min(500).max(15000).optional(),
         max_duration_sec: z.number().int().min(1).max(3600).optional(),
       },
@@ -204,6 +243,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
           args: args.args,
           cwd: args.cwd,
           readonly: args.readonly,
+          allowNetwork: args.allow_network,
           waitMs: args.wait_ms,
           maxDurationSec: clampedDurationSec,
           jobRepo: deps.repos.jobs,
@@ -245,9 +285,15 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
     {
       title: 'Dispatch Background Runner',
       description:
-        'Start an asynchronous Codex SDK agent (codex_readonly or codex_write with auto-checkpoint) or background shell_task, returning job_id immediately.',
+        'Start an asynchronous multi-driver AI agent (Codex SDK, Claude Code CLI, Gemini CLI, OpenCode CLI) in readonly or write mode (with auto-checkpoint) or a background shell_task, returning job_id immediately.',
       inputSchema: {
-        mode: z.enum(['codex_readonly', 'codex_write', 'shell_task']),
+        runner_type: z
+          .enum(['codex_readonly', 'codex_write', 'agent_readonly', 'agent_write', 'shell_task'])
+          .optional(),
+        mode: z
+          .enum(['codex_readonly', 'codex_write', 'agent_readonly', 'agent_write', 'shell_task'])
+          .optional(),
+        agent_driver: z.enum(['codex', 'claude_code', 'gemini_cli', 'opencode']).optional(),
         slug: z.string().min(1),
         objective: z.string().min(1),
         resume_thread_id: z.string().optional(),
@@ -266,6 +312,12 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
     withMcpGuardrails(
       async (args, extra) => {
         const actor = getToolActor(deps, extra);
+        const effectiveRunnerType = args.runner_type ?? args.mode;
+        if (!effectiveRunnerType) {
+          throw new Error('dispatch_runner requires "runner_type" (or "mode").');
+        }
+        const effectiveDriver = args.agent_driver ?? deps.config.defaultAgentDriver ?? 'codex';
+
         const { slug, realWorkspaceRoot } = resolveWorkspaceRoot(
           deps.config.workspacesDir,
           args.slug,
@@ -278,7 +330,7 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
         deps.repos.jobs.createJob({
           job_id: jobId,
           workspace_slug: slug,
-          runner_type: args.mode,
+          runner_type: effectiveRunnerType,
           status: 'queued',
           command_or_objective: deps.scrubber.scrub(args.objective),
           codex_thread_id: args.resume_thread_id ?? null,
@@ -289,7 +341,10 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
           action: 'runner.dispatch',
           target: `${slug}:${jobId}`,
           status: 'success',
-          details: { mode: args.mode },
+          details: {
+            runner_type: effectiveRunnerType,
+            ...(effectiveRunnerType !== 'shell_task' ? { driver: effectiveDriver } : {}),
+          },
         });
 
         const effectiveMaxDurationSec = Math.min(
@@ -301,42 +356,48 @@ export function registerExecRunnerTools(server: McpServer, deps: McpToolDeps): v
           deps.config.codexTokenBudget,
         );
 
-        if (args.mode === 'shell_task') {
+        if (effectiveRunnerType === 'shell_task') {
           launchBackgroundShellTask(deps, {
             jobId,
             slug,
             workspaceDir: realWorkspaceRoot,
             command: args.objective,
             maxDurationSec: effectiveMaxDurationSec,
+            allowNetwork: args.allow_network ?? false,
           });
         } else {
-          void deps.codexRunner
-            .run({
-              jobId,
-              workspaceSlug: slug,
-              workspaceDir: realWorkspaceRoot,
-              mode: args.mode === 'codex_write' ? 'write' : 'readonly',
-              objective: args.objective,
-              resumeThreadId: args.resume_thread_id,
-              model: args.model,
-              reasoningEffort: args.reasoning_effort,
-              allowNetwork: args.allow_network,
-              maxDurationSec: effectiveMaxDurationSec,
-              tokenBudget: effectiveTokenBudget,
-            })
-            .catch((err) => {
-              const msg = deps.scrubber.scrub(
-                err instanceof Error ? err.message : String(err),
-              );
-              deps.repos.jobs.updateJob(jobId, {
-                status: 'failed',
-                error_message: msg,
-              });
+          const runMode =
+            effectiveRunnerType === 'codex_write' || effectiveRunnerType === 'agent_write'
+              ? 'write'
+              : 'readonly';
+          const runOptions = {
+            jobId,
+            workspaceSlug: slug,
+            workspaceDir: realWorkspaceRoot,
+            mode: runMode as 'readonly' | 'write',
+            objective: args.objective,
+            driver: effectiveDriver,
+            resumeThreadId: args.resume_thread_id,
+            model: args.model,
+            reasoningEffort: args.reasoning_effort,
+            ...(args.allow_network !== undefined ? { allowNetwork: args.allow_network } : {}),
+            maxDurationSec: effectiveMaxDurationSec,
+            tokenBudget: effectiveTokenBudget,
+          };
+
+          void deps.agentRunner.run(runOptions).catch((err) => {
+            const msg = deps.scrubber.scrub(
+              err instanceof Error ? err.message : String(err),
+            );
+            deps.repos.jobs.updateJob(jobId, {
+              status: 'failed',
+              error_message: msg,
             });
+          });
         }
 
         return [
-          `Dispatched ${args.mode} job on workspace "${slug}".`,
+          `Dispatched ${effectiveRunnerType}${effectiveRunnerType === 'shell_task' ? '' : ` (driver=${effectiveDriver})`} job on workspace "${slug}".`,
           `job_id: ${jobId}`,
           `status: queued`,
           `Poll with job_status(job_id="${jobId}").`,

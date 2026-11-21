@@ -1,11 +1,10 @@
 import type { CloudflareService } from '../../core/cloudflareService.js';
-import type { CodexSdkRunner } from '../../core/codexRunner.js';
 import type { DownstreamMcpBridge } from '../../core/downstreamMcpBridge.js';
 import type { GitHubService } from '../../core/githubService.js';
 import type { WorkspaceLockManager } from '../../core/workspaceLock.js';
 import type { GatewayDatabase } from '../../db/sqlite.js';
 import type { Repositories } from '../../db/repositories/index.js';
-import type { GatewayConfig, ScrubberLike } from '../../types.js';
+import type { AgentRunner, GatewayConfig, ScrubberLike } from '../../types.js';
 import type { GuardTextOutputOptions } from '../outputGuard.js';
 
 export interface McpToolDeps {
@@ -17,7 +16,7 @@ export interface McpToolDeps {
   githubService: GitHubService;
   cloudflareService: CloudflareService;
   downstreamBridge: DownstreamMcpBridge;
-  codexRunner: CodexSdkRunner;
+  agentRunner: AgentRunner;
   actor?: string;
   notifyWebhook?: (event: string, payload: Record<string, unknown>) => Promise<void>;
 }

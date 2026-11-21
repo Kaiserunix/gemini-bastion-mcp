@@ -9,6 +9,7 @@ export interface PublicLandingPageInput {
 export interface PublicGatewayStatusJson {
   service: 'gemini-bastion-mcp';
   brand: 'GeminiBastionMCP';
+  version: '0.2.0';
   status: 'online' | 'degraded';
   dbReady: boolean;
   mcpEndpoint: string;
@@ -93,6 +94,7 @@ export function buildPublicGatewayStatusJson(
   return {
     service: 'gemini-bastion-mcp',
     brand: 'GeminiBastionMCP',
+    version: '0.2.0',
     status: input.dbReady ? 'online' : 'degraded',
     dbReady: input.dbReady,
     mcpEndpoint: `${base}/mcp`,
@@ -123,7 +125,7 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GeminiBastionMCP — Public Gateway Portal</title>
+  <title>GeminiBastionMCP v0.2.0 — Remote MCP Bastion for Web Gemini, Claude &amp; ChatGPT</title>
   <style>
     :root {
       --bg: #0b1020;
@@ -267,13 +269,14 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
       <div class="brand-row">
         <span class="pill"><span class="dot"></span>${statusLabel}</span>
         <span>GeminiBastionMCP</span>
+        <span class="mono">v0.2.0</span>
       </div>
       <a class="btn btn-ghost" href="/admin">Operator /admin &rarr;</a>
     </header>
 
     <section class="hero">
-      <h1>Self-Hosted MCP 2025-11-25 Streamable HTTP &amp; OAuth 2.1 Bastion</h1>
-      <p>Stateless Transport &middot; PKCE (S256) &middot; Dynamic Client Registration &middot; 10 Tools, 1 Approval Gate</p>
+      <h1>Remote MCP 2025-11-25 &amp; OAuth 2.1 Bastion for Web Gemini, Claude.ai &amp; ChatGPT</h1>
+      <p>Stateless Streamable HTTP &middot; PKCE (S256) &middot; Dynamic Client Registration &middot; Per-Workspace bwrap Jail &middot; 10 Tools, 1 Approval Gate</p>
     </section>
 
     <section class="card">
@@ -291,26 +294,26 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
     </section>
 
     <section class="card">
-      <h2 class="card-title">Quick Connect Guide</h2>
+      <h2 class="card-title">Quick Connect — Web Gemini, Claude.ai &amp; ChatGPT</h2>
       <div class="grid-3">
         <article class="mini-card">
-          <h3>Web Gemini</h3>
+          <h3>Web Gemini (gemini.google.com)</h3>
           <p>Open <strong>Connected Apps</strong> &rarr; Add custom MCP &rarr; paste the <span class="mono">/mcp</span> URL above. OAuth 2.1 DCR + PKCE runs automatically.</p>
         </article>
         <article class="mini-card">
-          <h3>Claude.ai / ChatGPT</h3>
+          <h3>Claude.ai &amp; ChatGPT</h3>
           <p>Add a <strong>Custom Connector</strong> pointing to the <span class="mono">/mcp</span> endpoint. Supports stateless Streamable HTTP and RFC 8707 resource binding.</p>
         </article>
         <article class="mini-card">
-          <h3>Static OAuth</h3>
+          <h3>Static OAuth &amp; SSO</h3>
           <p>Authorize: <span class="mono">/oauth/authorize</span><br />Token: <span class="mono">/oauth/token</span><br />DCR: <span class="mono">/oauth/register</span></p>
         </article>
       </div>
     </section>
 
     <section class="card">
-      <h2 class="card-title">10-Tool Contract Surface</h2>
-      <div class="badges">
+      <h2 class="card-title">10-Tool Contract &amp; Multi-Agent Drivers</h2>
+      <div class="badges" style="margin-bottom: 10px;">
         <span class="badge tier-1">&#x1F7E2; workspace_manage</span>
         <span class="badge tier-1">&#x1F7E2; code_explore</span>
         <span class="badge tier-1">&#x1F7E2; code_patch</span>
@@ -321,6 +324,11 @@ export function renderPublicLandingPageHtml(input: PublicLandingPageInput): stri
         <span class="badge tier-1">&#x1F7E2; infra_inspect</span>
         <span class="badge tier-2">&#x1F7E1; stage_mutation_plan</span>
         <span class="badge tier-3">&#x1F534; publish_changes (Single External Write Gate)</span>
+      </div>
+      <div class="badges">
+        <span class="badge">Drivers: Codex SDK / Claude Code / Gemini CLI / OpenCode</span>
+        <span class="badge">Isolation: bwrap FS &amp; --unshare-net Jail</span>
+        <span class="badge">Federation: Authenticated MCP-2 Proxy</span>
       </div>
     </section>
 

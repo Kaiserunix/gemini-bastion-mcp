@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 
 const IMMUTABLE_GATEWAY_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
@@ -64,7 +64,7 @@ const WINDOWS_ALLOWLIST = [
 ] as const;
 
 const FORBIDDEN_ENV_KEY_PATTERN =
-  /(?:GH_TOKEN|GITHUB_TOKEN|CLOUDFLARE|OPENAI|CODEX_API|OAUTH|ADMIN_PASSWORD|NOTIFY_WEBHOOK|DOWNSTREAM_MCPS|SECRET|PASSWORD|PASSWD|PRIVATE_KEY|CREDENTIAL)/i;
+  /(?:GH_TOKEN|GITHUB_TOKEN|CLOUDFLARE|OPENAI|CODEX_API|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPS_MCP_AUTH_TOKEN|AGENT_RUNNER_AUTH_TOKEN|OAUTH|ADMIN_PASSWORD|NOTIFY_WEBHOOK|DOWNSTREAM_MCPS|API_KEY|AUTH_TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE_KEY|CREDENTIAL)/i;
 
 export const NON_INTERACTIVE_ENV_DEFAULTS: Record<string, string> = {
   CI: 'true',
@@ -124,6 +124,17 @@ export function buildSandboxedEnv(options: BuildSandboxedEnvOptions = {}): Recor
   return result;
 }
 
+export interface BwrapIsolationOptions {
+  enabled: boolean;
+  strict?: boolean;
+  workspaceDir: string;
+  workspacesRoot: string;
+  chdir?: string;
+  dataDir?: string;
+  allowNetwork?: boolean;
+  bwrapBinary?: string;
+}
+
 export interface SubprocessOptions {
   command: string;
   args?: string[];
@@ -135,10 +146,13 @@ export interface SubprocessOptions {
   signal?: AbortSignal;
   uid?: number;
   gid?: number;
+  bwrapIsolation?: BwrapIsolationOptions;
   stdinData?: string;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
 }
+
+export type ExecOptions = SubprocessOptions;
 
 export interface ExecResult {
   exitCode: number | null;
@@ -274,6 +288,192 @@ export async function killProcessTree(
   });
 }
 
+const bwrapProbeSyncCache = new Map<string, boolean>();
+const bwrapProbePromiseCache = new Map<string, Promise<boolean>>();
+let warnedBwrapFallback = false;
+
+function normalizeMountPath(target: string): string {
+  const normalized = target.replace(/\\/g, '/').replace(/\/+$/, '');
+  return normalized.length === 0 ? '/' : normalized;
+}
+
+function isSameOrParentMount(candidate: string, target: string): boolean {
+  const a = normalizeMountPath(candidate);
+  const b = normalizeMountPath(target);
+  if (a === b) return true;
+  if (a === '/') return true;
+  return b.startsWith(`${a}/`);
+}
+
+/**
+ * Pure helper building argv for bubblewrap (`bwrap`) per-workspace filesystem and network isolation.
+ * Safe to unit-test on any OS.
+ */
+export function buildBwrapArgs(
+  options: BwrapIsolationOptions,
+  innerCommandArgs: string[],
+): string[] {
+  const workspacesRoot = normalizeMountPath(options.workspacesRoot);
+  const workspaceDir = normalizeMountPath(options.workspaceDir);
+  const dataDir = options.dataDir ? normalizeMountPath(options.dataDir) : undefined;
+
+  const args: string[] = [
+    '--die-with-parent',
+    '--ro-bind',
+    '/',
+    '/',
+    '--dev',
+    '/dev',
+    '--proc',
+    '/proc',
+    '--tmpfs',
+    '/tmp',
+    '--tmpfs',
+    workspacesRoot,
+  ];
+
+  if (
+    dataDir &&
+    dataDir !== '/tmp' &&
+    !dataDir.startsWith('/tmp/') &&
+    !isSameOrParentMount(dataDir, workspaceDir)
+  ) {
+    args.push('--tmpfs', dataDir);
+  }
+
+  const rawChdir = options.chdir ? normalizeMountPath(options.chdir) : undefined;
+  const chdir = rawChdir && isSameOrParentMount(workspaceDir, rawChdir) ? rawChdir : workspaceDir;
+
+  args.push('--bind', workspaceDir, workspaceDir);
+  args.push('--chdir', chdir);
+
+  if (!options.allowNetwork) {
+    args.push('--unshare-net');
+  }
+
+  args.push('--', ...innerCommandArgs);
+  return args;
+}
+
+function buildBwrapProbeCommand(
+  bwrapBinary?: string,
+  uid?: number,
+  gid?: number,
+): { cmd: string; args: string[]; env: Record<string, string>; cacheKey: string } {
+  const bwrapBin = bwrapBinary ?? resolvePosixBinary(['/usr/bin/bwrap', '/bin/bwrap'], 'bwrap');
+  const trueBin = resolvePosixBinary(['/bin/true', '/usr/bin/true'], '/bin/true');
+  const probeArgs = ['--ro-bind', '/', '/', '--tmpfs', '/tmp', '--unshare-net', '--', trueBin];
+  const cacheKey = `${bwrapBin}:${uid ?? ''}:${gid ?? ''}`;
+
+  const currentUid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  const currentGid = typeof process.getgid === 'function' ? process.getgid() : undefined;
+  const needsPrivilegeSwitch =
+    uid !== undefined &&
+    currentUid !== undefined &&
+    currentUid !== 0 &&
+    (uid !== currentUid || (gid !== undefined && currentGid !== undefined && gid !== currentGid));
+
+  if (needsPrivilegeSwitch) {
+    const sudoBin = resolvePosixBinary(['/usr/bin/sudo'], 'sudo');
+    const sudoArgs = ['-n', '-H', '-u', `#${uid}`];
+    if (gid !== undefined) {
+      sudoArgs.push('-g', `#${gid}`);
+    }
+    sudoArgs.push('--', bwrapBin, ...probeArgs);
+    return { cmd: sudoBin, args: sudoArgs, env: { PATH: IMMUTABLE_GATEWAY_PATH }, cacheKey };
+  }
+
+  return { cmd: bwrapBin, args: probeArgs, env: { PATH: IMMUTABLE_GATEWAY_PATH }, cacheKey };
+}
+
+function probeBwrapSupportSync(bwrapBinary?: string, uid?: number, gid?: number): boolean {
+  if (process.platform !== 'linux') return false;
+  const { cmd, args, env, cacheKey } = buildBwrapProbeCommand(bwrapBinary, uid, gid);
+  const cached = bwrapProbeSyncCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  try {
+    const res = spawnSync(cmd, args, {
+      env,
+      stdio: 'ignore',
+      timeout: 3000,
+      windowsHide: true,
+    });
+    const ok = res.status === 0 && !res.error;
+    bwrapProbeSyncCache.set(cacheKey, ok);
+    return ok;
+  } catch {
+    bwrapProbeSyncCache.set(cacheKey, false);
+    return false;
+  }
+}
+
+/**
+ * Probes whether bubblewrap (`bwrap`) can create user/mount/network namespaces on this Linux host.
+ * Result is cached per binary + uid + gid; always returns `false` on non-Linux platforms.
+ */
+export async function probeBwrapSupport(
+  bwrapBinary?: string,
+  uid?: number,
+  gid?: number,
+): Promise<boolean> {
+  if (process.platform !== 'linux') return false;
+  const { cmd, args, env, cacheKey } = buildBwrapProbeCommand(bwrapBinary, uid, gid);
+
+  const syncCached = bwrapProbeSyncCache.get(cacheKey);
+  if (syncCached !== undefined) return syncCached;
+
+  const existing = bwrapProbePromiseCache.get(cacheKey);
+  if (existing) return existing;
+
+  const probePromise = new Promise<boolean>((resolve) => {
+    try {
+      const child = spawn(cmd, args, {
+        env,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      const timer = setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // ignore
+        }
+        bwrapProbeSyncCache.set(cacheKey, false);
+        resolve(false);
+      }, 3000);
+      timer.unref?.();
+
+      child.on('error', () => {
+        clearTimeout(timer);
+        bwrapProbeSyncCache.set(cacheKey, false);
+        resolve(false);
+      });
+      child.on('exit', (code) => {
+        clearTimeout(timer);
+        const ok = code === 0;
+        bwrapProbeSyncCache.set(cacheKey, ok);
+        resolve(ok);
+      });
+    } catch {
+      bwrapProbeSyncCache.set(cacheKey, false);
+      resolve(false);
+    }
+  });
+
+  bwrapProbePromiseCache.set(cacheKey, probePromise);
+  return probePromise;
+}
+
+/**
+ * Clears the cached bwrap namespace probe results (intended for tests).
+ */
+export function resetBwrapProbeCache(): void {
+  bwrapProbeSyncCache.clear();
+  bwrapProbePromiseCache.clear();
+  warnedBwrapFallback = false;
+}
+
 /**
  * Starts a non-interactive subprocess with output capping, AbortSignal, and optional timeout.
  * Suitable for both bounded command execution and background-promoted shell jobs.
@@ -287,6 +487,46 @@ export function startSubprocess(options: SubprocessOptions): SubprocessHandle {
   let spawnArgs = options.args ?? [];
   let useShell = options.shell ?? false;
   let usedSudo = false;
+
+  if (options.bwrapIsolation?.enabled) {
+    const bwrap = options.bwrapIsolation;
+    const bwrapSupported =
+      process.platform === 'linux' &&
+      probeBwrapSupportSync(bwrap.bwrapBinary, options.uid, options.gid);
+
+    if (bwrapSupported) {
+      const bwrapBin = bwrap.bwrapBinary ?? resolvePosixBinary(['/usr/bin/bwrap', '/bin/bwrap'], 'bwrap');
+      const shBin = resolvePosixBinary(['/bin/sh', '/usr/bin/sh'], '/bin/sh');
+      const innerCommandArgs = useShell
+        ? [shBin, '-c', spawnArgs.length > 0 ? [spawnCommand, ...spawnArgs].join(' ') : spawnCommand]
+        : [spawnCommand, ...spawnArgs];
+
+      let effectiveDataDir: string | undefined;
+      if (bwrap.dataDir) {
+        try {
+          if (fs.existsSync(bwrap.dataDir)) {
+            effectiveDataDir = bwrap.dataDir;
+          }
+        } catch {
+          effectiveDataDir = undefined;
+        }
+      }
+
+      spawnArgs = buildBwrapArgs(
+        { ...bwrap, dataDir: effectiveDataDir, chdir: bwrap.chdir ?? options.cwd },
+        innerCommandArgs,
+      );
+      spawnCommand = bwrapBin;
+      useShell = false;
+    } else if (bwrap.strict) {
+      throw new Error(
+        'Sandbox bwrap isolation is required (SANDBOX_STRICT_ISOLATION=true) but bubblewrap namespace creation is unavailable',
+      );
+    } else if (process.platform === 'linux' && !warnedBwrapFallback) {
+      warnedBwrapFallback = true;
+      console.warn('[exec] bwrap namespace isolation unavailable; falling back to UID-dropped execution');
+    }
+  }
 
   const spawnOpts: Parameters<typeof spawn>[2] = {
     cwd: options.cwd,
@@ -343,10 +583,10 @@ export function startSubprocess(options: SubprocessOptions): SubprocessHandle {
       }
       if (useShell) {
         const shellCmd =
-          spawnArgs.length > 0 ? [options.command, ...spawnArgs].join(' ') : options.command;
+          spawnArgs.length > 0 ? [spawnCommand, ...spawnArgs].join(' ') : spawnCommand;
         sudoArgs.push(shBin, '-c', shellCmd);
       } else {
-        sudoArgs.push(options.command, ...spawnArgs);
+        sudoArgs.push(spawnCommand, ...spawnArgs);
       }
 
       spawnCommand = sudoBin;
@@ -485,6 +725,9 @@ export function startSubprocess(options: SubprocessOptions): SubprocessHandle {
  * and automatic process-group cleanup.
  */
 export async function runSubprocess(options: SubprocessOptions): Promise<ExecResult> {
+  if (options.bwrapIsolation?.enabled && process.platform === 'linux') {
+    await probeBwrapSupport(options.bwrapIsolation.bwrapBinary, options.uid, options.gid);
+  }
   const handle = startSubprocess(options);
   return handle.done;
 }

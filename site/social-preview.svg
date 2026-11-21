@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-label="GeminiBastionMCP Social Preview Card">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-label="GeminiBastionMCP v0.2.0 Social Preview Card">
   <defs>
     <linearGradient id="socBg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#0b1020" />
@@ -24,51 +24,57 @@
   <rect width="1280" height="640" fill="url(#socGlow2)" />
   <rect x="24" y="24" width="1232" height="592" rx="28" fill="none" stroke="#233054" stroke-width="3" />
 
-  <!-- Left Column: Brand & Value Proposition -->
-  <g transform="translate(76, 86)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif">
-    <!-- Shield + Slug Row -->
+  <!-- Content Area -->
+  <g transform="translate(72, 74)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif">
+    <!-- Top Header Row -->
     <g transform="translate(0, 0)">
       <rect x="0" y="0" width="76" height="76" rx="18" fill="#131a2e" stroke="#3b82f6" stroke-width="2.5" />
       <path d="M38 12 L60 21 V39 C60 54 50 64 38 69 C26 64 16 54 16 39 V21 Z" fill="#0b1224" stroke="url(#socShield)" stroke-width="3.5" />
       <circle cx="38" cy="39" r="6" fill="#3b82f6" />
 
-      <rect x="94" y="10" width="248" height="28" rx="14" fill="#131f3a" stroke="#3b82f6" stroke-width="1.5" />
-      <text x="218" y="29" text-anchor="middle" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="13" font-weight="700">MCP 2025-11-25 · OAUTH 2.1 DCR</text>
+      <rect x="94" y="8" width="286" height="28" rx="14" fill="#131f3a" stroke="#3b82f6" stroke-width="1.5" />
+      <text x="237" y="27" text-anchor="middle" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700">MCP 2025-11-25 · OAUTH 2.1 DCR</text>
 
-      <rect x="354" y="10" width="154" height="28" rx="14" fill="#0d2824" stroke="#10b981" stroke-width="1.5" />
-      <text x="431" y="29" text-anchor="middle" fill="#86efac" font-family="ui-monospace, monospace" font-size="13" font-weight="700">v0.1.0 · 59/59 ✓</text>
+      <rect x="392" y="8" width="246" height="28" rx="14" fill="#0d2824" stroke="#10b981" stroke-width="1.5" />
+      <text x="515" y="27" text-anchor="middle" fill="#86efac" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700">v0.2.0 · GHCR :lite &amp; :full</text>
 
-      <text x="96" y="64" fill="#60a5fa" font-family="ui-monospace, monospace" font-size="18" font-weight="600">github.com/Kaiserunix/gemini-bastion-mcp</text>
+      <rect x="650" y="8" width="256" height="28" rx="14" fill="#131a2e" stroke="#f59e0b" stroke-width="1.5" />
+      <text x="778" y="27" text-anchor="middle" fill="#fde68a" font-family="ui-monospace, monospace" font-size="12.5" font-weight="700">bwrap Jail · Multi-Agent CLI</text>
+
+      <text x="96" y="64" fill="#60a5fa" font-family="ui-monospace, monospace" font-size="17" font-weight="600">github.com/Kaiserunix/gemini-bastion-mcp · Universal Streamable HTTP MCP</text>
     </g>
 
-    <!-- Headline -->
-    <text x="0" y="156" fill="#f8fafc" font-size="64" font-weight="800" letter-spacing="-1.5">GeminiBastionMCP</text>
-    <text x="0" y="206" fill="#93c5fd" font-size="25" font-weight="700">The Self-Hosted OAuth 2.1 MCP Bastion for Web Gemini, Claude &amp; ChatGPT</text>
-    <text x="0" y="246" fill="#93a3c8" font-size="19">Turn browser &amp; mobile AI chats into a sandboxed full-stack coding, background Codex</text>
-    <text x="0" y="274" fill="#93a3c8" font-size="19">runner, and two-phase Cloudflare ops agent — with zero secret leakage.</text>
+    <!-- Headline & Multi-Client Positioning -->
+    <text x="0" y="150" fill="#f8fafc" font-size="62" font-weight="800" letter-spacing="-1.5">GeminiBastionMCP</text>
+    <text x="0" y="198" fill="#93c5fd" font-size="24.5" font-weight="700">Built for Web Gemini (gemini.google.com), Claude.ai &amp; ChatGPT — Not Gemini-Only</text>
+    <text x="0" y="236" fill="#93a3c8" font-size="18.5">1-minute zero-build GHCR deploy · Pluggable Multi-Agent Drivers (Codex, Claude Code, Gemini CLI,</text>
+    <text x="0" y="264" fill="#93a3c8" font-size="18.5">OpenCode) · bwrap per-workspace FS &amp; network jail · Google/GitHub SSO · 10 tools, 1 approval gate.</text>
 
-    <!-- 3 Tier Funnel Cards -->
-    <g transform="translate(0, 314)">
-      <rect x="0" y="0" width="356" height="148" rx="16" fill="#131a2e" stroke="#10b981" stroke-width="2" />
-      <text x="22" y="34" fill="#86efac" font-family="ui-monospace, monospace" font-size="14" font-weight="700">🟢 TIER 1: ALWAYS ALLOW (TOOLS 1–8)</text>
-      <text x="22" y="64" fill="#e6ecff" font-size="16" font-weight="700">Zero-Popup Sandbox &amp; Inspect</text>
-      <text x="22" y="90" fill="#93a3c8" font-size="13.5">Git sync, AST/ripgrep explore, atomic patch</text>
-      <text x="22" y="110" fill="#93a3c8" font-size="13.5">with L0/L1/L2 checks, 15s auto-job exec,</text>
-      <text x="22" y="130" fill="#93a3c8" font-size="13.5">@openai/codex-sdk runner &amp; read-only inspect.</text>
+    <!-- 3 Feature Pillar Cards -->
+    <g transform="translate(0, 304)">
+      <rect x="0" y="0" width="360" height="172" rx="16" fill="#131a2e" stroke="#10b981" stroke-width="2" />
+      <text x="22" y="34" fill="#86efac" font-family="ui-monospace, monospace" font-size="13.5" font-weight="700">🟢 10 TOOLS · 1 APPROVAL GATE</text>
+      <text x="22" y="64" fill="#e6ecff" font-size="16" font-weight="700">Zero-Popup Web AI UX</text>
+      <text x="22" y="90" fill="#93a3c8" font-size="13.5">Tools 1–8 run in sandbox (Always Allow).</text>
+      <text x="22" y="110" fill="#93a3c8" font-size="13.5">Tool 9 stages 15m TTL plan + undo snapshot.</text>
+      <text x="22" y="130" fill="#93a3c8" font-size="13.5">Tool 10 (publish_changes) is the single</text>
+      <text x="22" y="150" fill="#93a3c8" font-size="13.5">audited external write exit.</text>
 
-      <rect x="378" y="0" width="356" height="148" rx="16" fill="#131a2e" stroke="#f59e0b" stroke-width="2" />
-      <text x="400" y="34" fill="#fde68a" font-family="ui-monospace, monospace" font-size="14" font-weight="700">🟡 TIER 2: TWO-PHASE PLAN (TOOL 9)</text>
-      <text x="400" y="64" fill="#e6ecff" font-size="16" font-weight="700">stage_mutation_plan (15m TTL)</text>
-      <text x="400" y="90" fill="#93a3c8" font-size="13.5">Captures live Cloudflare or downstream MCP-2</text>
-      <text x="400" y="110" fill="#93a3c8" font-size="13.5">rollback snapshot &amp; human-readable diff</text>
-      <text x="400" y="130" fill="#93a3c8" font-size="13.5">with zero external writes.</text>
+      <rect x="382" y="0" width="360" height="172" rx="16" fill="#131a2e" stroke="#3b82f6" stroke-width="2" />
+      <text x="404" y="34" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="13.5" font-weight="700">🤖 4 PLUGGABLE AGENT DRIVERS</text>
+      <text x="404" y="64" fill="#e6ecff" font-size="16" font-weight="700">Codex · Claude Code · Gemini · OpenCode</text>
+      <text x="404" y="90" fill="#93a3c8" font-size="13.5">Dispatch background coding agents via</text>
+      <text x="404" y="110" fill="#93a3c8" font-size="13.5">@openai/codex-sdk, claude_code, gemini_cli,</text>
+      <text x="404" y="130" fill="#93a3c8" font-size="13.5">or opencode — locally or in a dedicated</text>
+      <text x="404" y="150" fill="#93a3c8" font-size="13.5">isolated-runner container sidecar.</text>
 
-      <rect x="756" y="0" width="372" height="148" rx="16" fill="#1d1322" stroke="#ef4444" stroke-width="2" />
-      <text x="778" y="34" fill="#fca5a5" font-family="ui-monospace, monospace" font-size="14" font-weight="700">🔴 TIER 3: 1 APPROVAL GATE (TOOL 10)</text>
-      <text x="778" y="64" fill="#e6ecff" font-size="16" font-weight="700">publish_changes (Single Write Exit)</text>
-      <text x="778" y="90" fill="#93a3c8" font-size="13.5">The only external mutation exit: feature-branch</text>
-      <text x="778" y="110" fill="#93a3c8" font-size="13.5">GitHub PRs (main blocked), Worker/Pages deploy,</text>
-      <text x="778" y="130" fill="#93a3c8" font-size="13.5">execute/rollback staged plan &amp; audit logs.</text>
+      <rect x="764" y="0" width="372" height="172" rx="16" fill="#1d1322" stroke="#f59e0b" stroke-width="2" />
+      <text x="786" y="34" fill="#fde68a" font-family="ui-monospace, monospace" font-size="13.5" font-weight="700">🛡️ DEFENSE-IN-DEPTH V2 SANDBOX</text>
+      <text x="786" y="64" fill="#e6ecff" font-size="16" font-weight="700">bwrap Jail + Bearer Sidecars</text>
+      <text x="786" y="90" fill="#93a3c8" font-size="13.5">Per-workspace bubblewrap mount &amp; network</text>
+      <text x="786" y="110" fill="#93a3c8" font-size="13.5">namespace isolation (--unshare-net), UID</text>
+      <text x="786" y="130" fill="#93a3c8" font-size="13.5">1001/1002 split, authenticated ops-mcp,</text>
+      <text x="786" y="150" fill="#93a3c8" font-size="13.5">and fail-closed Google/GitHub OAuth SSO.</text>
     </g>
   </g>
 </svg>

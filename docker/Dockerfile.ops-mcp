@@ -11,6 +11,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash \
       ca-certificates \
       openssh-client \
       tini \
@@ -20,11 +21,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /etc/ops-ssh /srv/ops-mcp \
     && chown -R node:node /etc/ops-ssh /srv/ops-mcp
 
+COPY --chown=node:node docker/ops-mcp-auth-proxy.mjs /srv/ops-mcp/ops-mcp-auth-proxy.mjs
+
 WORKDIR /srv/ops-mcp
+
+LABEL org.opencontainers.image.title="GeminiBastionMCP ops-mcp Sidecar" \
+      org.opencontainers.image.source="https://github.com/Kaiserunix/gemini-bastion-mcp" \
+      org.opencontainers.image.licenses="MIT"
 
 USER node
 
-EXPOSE 8090
+EXPOSE 9000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:9000/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["mcp-proxy", "--port", "8090", "--host", "0.0.0.0", "--server", "stream", "--", "ssh-mcp-server", "--configPath=/etc/ops-ssh/config.json"]
+CMD ["bash", "-c", "mcp-proxy --port 9001 --host 127.0.0.1 --server stream -- ssh-mcp-server --configPath=/etc/ops-ssh/config.json & MCP_PID=$!; node /srv/ops-mcp/ops-mcp-auth-proxy.mjs & PROXY_PID=$!; trap 'kill $MCP_PID $PROXY_PID 2>/dev/null || true' TERM INT; wait -n $MCP_PID $PROXY_PID; CODE=$?; kill $MCP_PID $PROXY_PID 2>/dev/null || true; exit $CODE"]

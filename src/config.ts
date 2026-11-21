@@ -1,7 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import type { CodexReasoningEffort, GatewayConfig, LogLevel, NodeEnv } from './types.js';
+import type {
+  AgentDriverName,
+  CodexReasoningEffort,
+  GatewayConfig,
+  LogLevel,
+  NodeEnv,
+} from './types.js';
 
 const DEFAULT_ALLOWED_REDIRECT_HOSTS = [
   'gemini.google.com',
@@ -158,6 +164,18 @@ const envSchema = z.object({
 
   SANDBOX_UID: optionalIntSchema,
   SANDBOX_GID: optionalIntSchema,
+  SANDBOX_BWRAP_ISOLATION: z.string().optional(),
+  SANDBOX_STRICT_ISOLATION: z.string().optional(),
+
+  DEFAULT_AGENT_DRIVER: z
+    .enum(['codex', 'claude_code', 'gemini_cli', 'opencode'])
+    .optional()
+    .transform((val): AgentDriverName => val ?? 'codex'),
+  ANTHROPIC_API_KEY: z.string().optional().transform(emptyToUndefined),
+  GEMINI_API_KEY: z.string().optional().transform(emptyToUndefined),
+  AGENT_RUNNER_URL: optionalUrlSchema,
+  AGENT_RUNNER_AUTH_TOKEN: z.string().optional().transform(emptyToUndefined),
+  OPS_MCP_AUTH_TOKEN: z.string().optional().transform(emptyToUndefined),
 });
 
 function canonicalizeWithAncestor(targetPath: string): string {
@@ -246,6 +264,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       throw new Error(
         'GITHUB_OAUTH_ALLOWED_USERS or GITHUB_OAUTH_ALLOWED_IDS must be set (non-empty) when GitHub OAuth credentials are configured in NODE_ENV=production',
       );
+    }
+
+    if (parsed.AGENT_RUNNER_URL) {
+      const runnerToken = parsed.AGENT_RUNNER_AUTH_TOKEN?.trim() ?? '';
+      if (
+        runnerToken.length < 24 ||
+        /replace[-_]?with|change[-_]?me|example|secret[-_]?here|placeholder/i.test(runnerToken)
+      ) {
+        throw new Error(
+          'AGENT_RUNNER_AUTH_TOKEN must be at least 24 non-placeholder characters when AGENT_RUNNER_URL is set in NODE_ENV=production',
+        );
+      }
     }
   }
 
@@ -340,6 +370,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
     sandboxUid: parsed.SANDBOX_UID,
     sandboxGid: parsed.SANDBOX_GID,
+    sandboxBwrapIsolation: parseBooleanFlag(
+      parsed.SANDBOX_BWRAP_ISOLATION,
+      process.platform === 'linux',
+    ),
+    sandboxStrictIsolation: parseBooleanFlag(parsed.SANDBOX_STRICT_ISOLATION, false),
+
+    defaultAgentDriver: parsed.DEFAULT_AGENT_DRIVER,
+    anthropicApiKey: parsed.ANTHROPIC_API_KEY,
+    geminiApiKey: parsed.GEMINI_API_KEY,
+    agentRunnerUrl: parsed.AGENT_RUNNER_URL,
+    agentRunnerAuthToken: parsed.AGENT_RUNNER_AUTH_TOKEN,
+    opsMcpAuthToken: parsed.OPS_MCP_AUTH_TOKEN,
   };
 }
 
