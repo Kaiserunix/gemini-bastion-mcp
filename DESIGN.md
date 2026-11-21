@@ -1,236 +1,160 @@
-# `GeminiBastionMCP` (`gemini-bastion-mcp`) — Engineering Architecture Specification
+# `GeminiBastionMCP` (`gemini-bastion-mcp`) — Architecture Specification
 
-## 1. Overview & Goals
+> See [docs/INDEX.md](docs/INDEX.md) for the documentation map and [.agents/rules/architecture-guardrails.md](.agents/rules/architecture-guardrails.md) for mandatory invariants.
 
-`GeminiBastionMCP` (`gemini-bastion-mcp`) is a self-hosted, single-operator **MCP 2025-11-25** bastion gateway engineered for web/mobile AI clients (`gemini.google.com` Connected Apps, Claude.ai, and ChatGPT), combining:
-- **Stateless Streamable HTTP MCP transport** (`WebStandardStreamableHTTPServerTransport`) mounted on Hono (`/mcp`).
-- **OAuth 2.1 + PKCE (`S256`) + Dynamic Client Registration (DCR) + RFC 8707 Resource Indicators** with SQLite-backed token family rotation and a 60-second refresh grace window.
-- **Sandboxed Multi-Workspace Execution** with GitHub synchronization, playbook discovery (`AGENTS.md` / `CLAUDE.md`), non-destructive `GIT_INDEX_FILE` checkpoints, atomic multi-file patching with an L0/L1/L2 validation pipeline, bounded `workspace_exec` with automatic background SQLite job promotion, and out-of-workspace artifact offloading (`/data/artifacts`).
-- **Native `@openai/codex-sdk` Orchestration** (`codex_readonly` / `codex_write` / `shell_task`) with thread resumption, duration/token budgets, and real `AbortController` + process-group cancellation.
-- **Blast-Radius-Contained External Operations**: Read-only GitHub and Cloudflare/MCP-2 inspection (`github_inspect`, `infra_inspect`), two-phase staged mutations (`stage_mutation_plan`), and a single external mutation exit (`publish_changes`).
-- **Admin PWA (`/admin`) & Webhook Notifications** for operational visibility, token/client management, audit logs, and job monitoring.
+## 1. Overview, Runtime Stack & Validated Commands
 
----
+`GeminiBastionMCP` is a self-hosted, single-operator **MCP 2025-11-25** bastion gateway for web/mobile AI clients (`gemini.google.com` Connected Apps, Claude.ai, ChatGPT, and MCP Inspector), pairing stateless Streamable HTTP (`/mcp`) and OAuth 2.1/PKCE/DCR with dual-UID workspace sandboxing, `@openai/codex-sdk` job orchestration, and a 10-tool / 1-approval-gate mutation funnel.
 
-## 2. Runtime Stack & Directory Layout
+| Layer | Technology / Baseline |
+|---|---|
+| Runtime | Node.js `>= 22.23.4` LTS (`package.json`, CI, `docker/Dockerfile`), ESM (`"type": "module"`) |
+| Language | TypeScript `^5.8.0` (`strict: true`, `moduleResolution: "NodeNext"`) |
+| HTTP & MCP | `hono`, `@hono/node-server`, `@modelcontextprotocol/sdk` (`^1.24.0`) |
+| Persistence | `better-sqlite3` (`WAL`, `synchronous = NORMAL`, `foreign_keys = ON`, `busy_timeout = 5000`) |
+| Integrations | `@openai/codex-sdk`, `octokit`, `cloudflare`, `zod` |
+| Tests | `vitest` (`vitest run`) |
 
-- **Runtime**: Node.js 22+ LTS (ESM `"type": "module"`), TypeScript 5.7+ (`strict: true`, `moduleResolution: "NodeNext"`).
-- **Web & Transport**: `hono`, `@hono/node-server`, `@modelcontextprotocol/sdk` (`>=1.24.0`).
-- **Persistence**: `better-sqlite3` in WAL mode (`foreign_keys = ON`, `busy_timeout = 5000`).
-- **Integrations**: `@openai/codex-sdk`, `octokit`, `cloudflare`, `zod`.
-- **Testing**: `vitest`.
-
-```text
-src/
-├── index.ts                      # HTTP server entrypoint, graceful shutdown, router wiring
-├── config.ts                     # Zod-validated env configuration + loadConfig(env?)
-├── types.ts                      # Shared domain, DB, runner, validation, and MCP tool types
-├── db/
-│   ├── sqlite.ts                 # WAL setup, pragmas, idempotent versioned migrations
-│   └── repositories/             # Typed SQLite DAOs (oauth, workspace, job, plan, audit)
-├── utils/
-│   ├── exec.ts                   # Cross-platform process-group runner + buildSandboxedEnv()
-│   └── secretScrubber.ts         # SecretScrubber (env secret collection + token regexes)
-├── auth/                         # OAuth 2.1, DCR, PKCE, RFC 8707, Bearer middleware, Admin auth
-├── admin/                        # /admin PWA UI & JSON management APIs
-├── mcp/
-│   ├── server.ts                 # Hono /mcp Streamable HTTP stateless handler + 10-tool registry
-│   └── tools/                    # Implementations of the 10 MCP tools
-├── workspace/                    # Git sync, checkpoints (GIT_INDEX_FILE), stack/playbook detector, artifacts
-├── runners/                      # CodexRunner (@openai/codex-sdk), ShellRunner, JobManager
-├── integrations/                 # GitHub Octokit, Cloudflare SDK, Downstream MCP-2 federation, Webhooks
-└── security/                     # Path traversal guards, untrusted-boundary wrappers, audit helpers
+```bash
+npm run typecheck                                                        # tsc --noEmit
+npm run build                                                            # tsc -> dist/
+npm test                                                                 # vitest run
+npm run dev                                                              # tsx --env-file-if-exists=.env watch src/index.ts
+npm start                                                                # node --env-file-if-exists=.env dist/index.js
+docker compose -f docker/docker-compose.yml up -d --build                # gateway + cloudflared
+docker compose -f docker/docker-compose.yml --profile ops up -d --build  # + ops-mcp sidecar
 ```
 
 ---
 
-## 3. Transport & HTTP Surface
+## 2. Repository & Source Layout
 
-1. **No Legacy HTTP+SSE**: `/sse` and `/messages` legacy transports are strictly prohibited.
-2. **MCP Endpoint (`ALL /mcp`)**:
-   - Protected by OAuth Bearer token middleware validating signature/DB state, expiration, revocation, and RFC 8707 `resource` audience matching `PUBLIC_DOMAIN` / `${PUBLIC_DOMAIN}/mcp`.
-   - Uses `WebStandardStreamableHTTPServerTransport` in **stateless mode** (`sessionIdGenerator: undefined`) so horizontal restarts or serverless/edge proxy reconnects never lose session state.
-   - Every tool returns `content: [{ type: "text", text }]` (with `isError: true` on tool failures) scrubbed via `SecretScrubber`.
-3. **Public Portal, Health & Discovery Endpoints**:
-   - `GET /`: Public Gateway Portal (dark-themed status & Quick Connect landing page with copyable `/mcp` endpoint, `.well-known` discovery links, static 10-tool tier badges, and `/admin` link; supports `Accept: application/json` content negotiation). **Strict zero-leakage invariant**: `GET /` MUST NEVER query or expose private workspaces, repo URLs, jobs, OAuth clients/tokens, or internal secrets.
-   - `GET /healthz`: Unauthenticated liveness/DB readiness check.
-   - `GET /.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`): RFC 9728 metadata pointing to `authorization_servers: [PUBLIC_DOMAIN]` and `resource`.
-   - `GET /.well-known/oauth-authorization-server`: RFC 8414 metadata advertising `authorization_endpoint`, `token_endpoint`, `registration_endpoint`, `revocation_endpoint`, `code_challenge_methods_supported: ["S256"]`, `scopes_supported`.
+```text
+src/
+├── index.ts                      # HTTP server (@hono/node-server) + SIGINT/SIGTERM graceful shutdown (10s force exit)
+├── app.ts                        # createGatewayApp(): Hono wiring, GET /, GET /healthz, orphan job recovery, 15m cleanup timer
+├── config.ts                     # Zod env validation + loadConfig(env?) + fail-closed prod & path-overlap guards
+├── types.ts                      # Shared config, OAuth, workspace, job, mutation plan, validation, and MCP tool types
+├── db/
+│   ├── sqlite.ts                 # WAL setup, pragmas, versioned transactional migrations (v1 + v2)
+│   └── repositories/             # oauthRepo, workspaceRepo, jobRepo, planRepo, auditRepo, index
+├── utils/
+│   ├── exec.ts                   # buildSandboxedEnv(), startSubprocess()/runSubprocess(), sudo UID drop, process-group kill
+│   └── secretScrubber.ts         # SecretScrubber (env/config secret collection + token regex redaction)
+├── auth/                         # Discovery, DCR, authorize, token/revoke, upstreamIdp, Bearer middleware, cookies, crypto, rateLimit
+├── admin/                        # /admin mobile PWA UI (ui.ts) & CSRF/session-protected JSON/SSE APIs (index.ts)
+├── mcp/
+│   ├── server.ts                 # Stateless Streamable HTTP /mcp handler + Origin allowlist + McpServer factory
+│   ├── landingPage.ts            # Zero-leakage GET / portal HTML/JSON + SHA-256 script CSP
+│   ├── outputGuard.ts            # withMcpGuardrails(): OAuth scope check, scrubbing, 60KB artifact offload, untrusted boundary
+│   └── tools/                    # index, context, workspaceTools (#1-#3), execRunnerTools (#4-#6), infraPublishTools (#7-#10)
+└── core/
+    ├── workspaceLock.ts          # Slug validation, dual-check path/symlink sandbox, sensitive-file blacklist, FIFO RW lock
+    ├── gitSnapshot.ts            # GitHub sync, stack/playbook detector, initCfOpsWorkspace, GIT_INDEX_FILE checkpoints & rollback
+    ├── codePatcher.ts            # Atomic multi-file patch/create/delete with pre-write checks, auto-checkpoint & rollback
+    ├── validationPipeline.ts     # L0 in-process checks, L1 adaptive CLI linters, L2 non-blocking test hint
+    ├── workspaceExec.ts          # Bounded command runner (<=15s) with background job promotion & active-job cancel registry
+    ├── codexRunner.ts            # CodexSdkRunner (@openai/codex-sdk), buildCodexSandboxedEnv(), reconcileOrphanJobs()
+    ├── githubService.ts          # Read-only PR/Issue/Actions inspection + protected-branch PR publish/review/comment
+    ├── cloudflareService.ts      # Read-only CF inspection, 2-phase CF plan stage/execute/rollback, Wrangler Worker/Pages deploy
+    ├── downstreamMcpBridge.ts    # MCP-2 client federation (HTTP/stdio), tool policy classification, staged mutating execution
+    └── webhookNotifier.ts        # Scrubbed Slack/Discord/Feishu/generic webhook delivery (5s non-fatal timeout)
+docker/
+├── Dockerfile                    # Multi-stage Node >=22.23.4 image with UID 1001 (gateway) / UID 1002 (worker) isolation
+├── docker-compose.yml            # gateway (no host port), cloudflared (edge_net), optional ops-mcp (--profile ops on ops_net)
+├── Dockerfile.ops-mcp            # Pre-built offline mcp-proxy + @uarlouski/ssh-mcp-server image (non-root node, port 8090)
+├── entrypoint.sh                 # umask 0027, enforces 0700 on DATA_DIR/ARTIFACTS_DIR/CODEX_HOME, checks WORKSPACES_DIR
+└── ops-mcp-config.example.json   # Reference MCP-2 server policy manifest (readonlyTools / mutatingTools / deniedTools)
+```
 
 ---
 
-## 4. OAuth 2.1, DCR, PKCE & Token Rotation
+## 3. HTTP Surface & Stateless Streamable HTTP Transport
 
-Designed specifically for strict OAuth 2.1 compliance and `gemini.google.com` Connected Apps compatibility:
+Legacy HTTP+SSE routes (`/sse`, `/messages`) are prohibited.
 
-- **Dynamic Client Registration (`POST /oauth/register`)**:
-  - Accepts up to **16 `redirect_uris`** per client (`1 <= redirect_uris.length <= 16`).
-  - Validates every redirect URI host against `OAUTH_ALLOWED_REDIRECT_HOSTS` (plus `localhost` / `127.0.0.1` loopback); HTTPS required for non-loopback hosts.
-  - Also supports pre-configured static client (`OAUTH_STATIC_CLIENT_ID` / `OAUTH_STATIC_CLIENT_SECRET`) upserted at boot.
-- **Authorization Endpoint (`GET /oauth/authorize` & `POST /oauth/authorize`)**:
-  - Requires PKCE (`code_challenge_method=S256`).
-  - Preserves `state` up to **8192 bytes** in SQLite (`oauth_auth_requests.state`).
-  - Validates RFC 8707 `resource` parameter when supplied and binds it through auth request -> auth code -> access/refresh tokens.
-  - Renders single-operator consent/login page protected by `ADMIN_PASSWORD_HASH` verification (recommended Docker-Compose-safe `scrypt:<saltHex>:<keyHex>`; also supports `scrypt$<saltHex>$<keyHex>`, `sha256:<hex>`, and `sha256$<hex>`) and a per-request CSRF token (`csrf_token`).
-  - Optionally offers **Sign in with Google** (`https://{PUBLIC_DOMAIN}/auth/idp/google/callback`) and **Sign in with GitHub** (`https://{PUBLIC_DOMAIN}/auth/idp/github/callback`) on both `/admin/login` and `/oauth/authorize`:
-    - **Fail-closed activation**: Google OAuth activates only when `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and non-empty `GOOGLE_OAUTH_ALLOWED_EMAILS` are all configured; GitHub OAuth activates only when `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and non-empty `GITHUB_OAUTH_ALLOWED_USERS` or `GITHUB_OAUTH_ALLOWED_IDS` are configured (`NODE_ENV=production` throws on startup if credentials are present without an allowlist).
-    - Uses single-use PKCE + browser-bound `oauth_upstream_states` (`state`, `provider`, `purpose`, `auth_req_id`, `code_verifier`, `binding_hash`, `expires_at`, `used`).
-- **Token Endpoint (`POST /oauth/token`)**:
-  - `grant_type=authorization_code`: Atomically consumes `oauth_codes` row, verifies `code_verifier` against `code_challenge` (`S256`), validates `redirect_uri` and `client_id` (and secret for confidential clients), issues opaque/signed access token (`1h` default) + refresh token (`30d` default) under a new `token_family_id`.
-  - `grant_type=refresh_token`:
-    - Implements **token family rotation** with a **60-second grace leeway (`grace_expires_at`)**.
-    - First use of a valid refresh token rotates to a fresh refresh token in the same `token_family_id` and sets `grace_expires_at = now + 60_000` on the old token so concurrent client retries succeed gracefully within 60s.
-    - Reuse of an already-rotated refresh token *after* `grace_expires_at` triggers immediate revocation of the entire `token_family_id` (theft detection).
+| Endpoint | Auth | Behavior |
+|---|---|---|
+| `GET /` | Public | Zero-leakage Gateway Portal (HTML with CSP script hash, copyable `/mcp` URL, `.well-known` links, static 10-tool badges, `/admin` link; `Accept: application/json` returns status JSON). Never queries workspaces, jobs, tokens, or secrets. |
+| `GET /healthz` | Public | Liveness & SQLite `SELECT 1` readiness (`200` / `503`). |
+| `GET /.well-known/oauth-protected-resource` & `/mcp` | Public | RFC 9728 metadata (`resource: "${PUBLIC_DOMAIN}/mcp"`, `authorization_servers: [PUBLIC_DOMAIN]`, `bearer_methods_supported: ["header"]`, `scopes_supported`). |
+| `GET /.well-known/oauth-authorization-server` | Public | RFC 8414 metadata (`issuer`, `/oauth/authorize`, `/oauth/token`, `/oauth/revoke`, `/oauth/register`, `code_challenge_methods_supported: ["S256"]`, `token_endpoint_auth_methods_supported: ["none", "client_secret_post"]`). |
+| `POST /mcp` | OAuth Bearer | Stateless `WebStandardStreamableHTTPServerTransport` (`sessionIdGenerator: undefined`, JSON response). `GET`/`DELETE`/other methods return `405` (`Allow: POST`). Disallowed `Origin` headers return `403` (allows `PUBLIC_DOMAIN`, `gemini.google.com`, `aistudio.google.com`, `claude.ai`, `chatgpt.com`, and HTTPS/loopback `OAUTH_ALLOWED_REDIRECT_HOSTS`). |
+
+- **Bearer Middleware (`src/auth/middleware.ts`)**: SHA-256 hashes the opaque token, verifies `oauth_tokens` (`token_type === 'access'`, non-revoked, unexpired, RFC 8707 `resource` matches `PUBLIC_DOMAIN` or `${PUBLIC_DOMAIN}/mcp`), and returns `401` with `WWW-Authenticate: Bearer resource_metadata="${PUBLIC_DOMAIN}/.well-known/oauth-protected-resource"` on failure.
+- **Tool Guardrails (`src/mcp/outputGuard.ts`)**: `withMcpGuardrails()` enforces OAuth scopes (`mcp:tools`/`mcp:write` vs `mcp:read`), scrubs outputs, enforces `{ content: [{ type: "text", text }] }` (plus `isError: true` on error), and offloads outputs `> INLINE_OUTPUT_MAX_BYTES` (default `60,000` bytes) to `${ARTIFACTS_DIR}/{artifactId}.log` with head/tail preview.
+
+---
+
+## 4. OAuth 2.1, DCR, PKCE, Token Rotation & Upstream IdP
+
+- **DCR (`POST /oauth/register`)**: Accepts `1..16` `redirect_uris`, max `500` dynamic clients (`20/min/IP`, `64KB` body), `token_endpoint_auth_method` `"none"` | `"client_secret_post"`. Permits loopback (`localhost`/`127.0.0.1`), built-in Google redirect patterns (`oauth-redirect.googleusercontent.com/{r,a}/*`, `oauth-redirect-{sandbox,test}.googleusercontent.com/*`, `vertexaisearch.cloud.google.com/oauth-redirect`), and HTTPS `OAUTH_ALLOWED_REDIRECT_HOSTS` (rejects fragments, wildcards, userinfo, traversal). Optional static client (`OAUTH_STATIC_CLIENT_ID`/`SECRET`) is upserted at boot; stale static clients are retired.
+- **Authorization (`GET|POST /oauth/authorize`)**: Requires `response_type=code` and PKCE `S256`; preserves `state` up to `8192` bytes; validates scopes (`mcp:tools` default, `mcp:read`, `mcp:write`) and RFC 8707 `resource` (default `${PUBLIC_DOMAIN}/mcp`). Uses `gb_mcp_auth_bind` cookie + per-request `csrf_token`; verifies `ADMIN_PASSWORD_HASH` (`scrypt:<saltHex>:<keyHex>` Compose-safe default, plus `scrypt$<salt>$<hex>`, `sha256:<hex>`, `sha256$<hex>`; `plain$`/unprefixed non-prod only). TTLs: auth request `10m`, auth code `5m`.
+- **Token & Revocation (`POST /oauth/token`, `POST /oauth/revoke`)**:
+  - `authorization_code`: Atomically consumes `oauth_codes`, verifies PKCE `S256`, `redirect_uri`, client auth, and `resource`; issues opaque 32-byte `base64url` access (`3600s`) + refresh (`30d`) tokens stored by SHA-256 hash under a new `token_family_id`.
+  - `refresh_token`: Rotates within `token_family_id` and sets `grace_expires_at = now + OAUTH_REFRESH_GRACE_SEC * 1000` (default `60s`) on the prior token for concurrent retries. Reuse after `grace_expires_at` or reuse of a revoked token revokes the entire `token_family_id`.
+  - `POST /oauth/revoke`: Revokes a single access token or the entire `token_family_id` when given a refresh token.
+- **Upstream IdP (`POST /auth/idp/:provider/start`, `GET /auth/idp/:provider/callback`)**: Optional Google (`{PUBLIC_DOMAIN}/auth/idp/google/callback`) and GitHub (`{PUBLIC_DOMAIN}/auth/idp/github/callback`) login for `/admin/login` (`purpose=admin`) and `/oauth/authorize` (`purpose=mcp_authorize`). **Fail-closed**: Google requires client ID/secret, non-empty `GOOGLE_OAUTH_ALLOWED_EMAILS`, and `email_verified === true`; GitHub requires client ID/secret and non-empty `GITHUB_OAUTH_ALLOWED_USERS` and/or `GITHUB_OAUTH_ALLOWED_IDS` (both must match if both set); `NODE_ENV=production` throws on boot if credentials exist without an allowlist. Protected by single-use PKCE `S256`, CSRF, `gb_mcp_auth_bind`, and `gb_upstream_oauth` cookie bound to `oauth_upstream_states.binding_hash` (`10m` TTL).
 
 ---
 
 ## 5. SQLite Data Model (`src/db/sqlite.ts`)
 
-SQLite operates in WAL mode (`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;`) at `${DATA_DIR}/gateway.db` (strictly outside `WORKSPACES_DIR`):
+Path: `${DATA_DIR}/gateway.db` (overridable via `DATABASE_PATH` or `:memory:`). Pragmas: `journal_mode = WAL`, `synchronous = NORMAL`, `foreign_keys = ON`, `busy_timeout = 5000`. Migrations tracked in `schema_migrations (version PK, name, applied_at)` (`v1: initial_schema`, `v2: upstream_oauth_states`):
 
 1. `oauth_clients (client_id PK, client_secret_hash, client_name, redirect_uris_json, is_static, created_at)`
-2. `oauth_auth_requests (auth_req_id PK, client_id, redirect_uri, state, code_challenge, code_challenge_method, scope, resource, csrf_token, expires_at, used)`
-3. `oauth_codes (code PK, client_id, redirect_uri, code_challenge, scope, resource, expires_at, used)`
-4. `oauth_tokens (token_hash PK, token_type, client_id, scope, resource, token_family_id, expires_at, grace_expires_at, revoked, created_at)`
+2. `oauth_auth_requests (auth_req_id PK, client_id FK, redirect_uri, state, code_challenge, code_challenge_method, scope, resource, csrf_token, expires_at, used)`
+3. `oauth_codes (code PK, client_id FK, redirect_uri, code_challenge, scope, resource, expires_at, used)`
+4. `oauth_tokens (token_hash PK, token_type, client_id FK, scope, resource, token_family_id, expires_at, grace_expires_at, revoked, created_at)`
 5. `oauth_upstream_states (state PK, provider, purpose, auth_req_id, code_verifier, binding_hash, expires_at, used, created_at)`
 6. `workspaces (slug PK, repo_url, default_branch, detected_stack_json, playbook_text, last_synced_at)`
-7. `checkpoints (checkpoint_id PK, workspace_slug, git_commit_sha, git_ref, reason, created_at)`
+7. `checkpoints (checkpoint_id PK, workspace_slug FK, git_commit_sha, git_ref, reason, created_at)`
 8. `jobs (job_id PK, workspace_slug, runner_type, status, command_or_objective, codex_thread_id, checkpoint_id, events_json, token_usage_json, final_report_text, error_message, created_at, updated_at)`
 9. `mutation_plans (plan_id PK, target_service, summary_diff_text, payload_json, rollback_payload_json, status, expires_at, created_at, executed_at)`
 10. `audit_logs (id PK AUTOINCREMENT, actor, action, target, status, details_json, created_at)`
 
 ---
 
-## 6. Security & Isolation Architecture
+## 6. Security, Sandbox & Docker Isolation
 
-### 6.1 Secret Isolation & Scrubbing
-- **Gateway Process vs. Workspace Subprocesses**: `GH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_READONLY_API_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `OAUTH_SIGNING_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_SECRET`, `ADMIN_PASSWORD_HASH`, `NOTIFY_WEBHOOK_URL`, and `DOWNSTREAM_MCPS_*` exist only in the gateway process.
-- **`buildSandboxedEnv()` (`src/utils/exec.ts`)**: Constructs a minimal allowlist environment (`PATH`, `HOME`, `LANG`, toolchain caches) and rejects/strips all sensitive keys while enforcing `CI=true`, `DEBIAN_FRONTEND=noninteractive`, `GIT_TERMINAL_PROMPT=0`, `PAGER=cat`.
-- **`SecretScrubber` (`src/utils/secretScrubber.ts`)**: Collects all sensitive env/config values (`length >= 8`) plus regexes for `ghp_`, `gho_`, `github_pat_`, `sk-`, JWT `eyJ...`, `Bearer`/`Basic` headers, URL credentials, and Cloudflare tokens, replacing matches with `[REDACTED_SECRET]` across all MCP responses, artifacts, logs, and webhooks.
-
-### 6.2 Filesystem & UID Separation
-- `/data` (SQLite DB + `/data/artifacts`) is owned by `gateway` (UID 1001, mode `0700`).
-- `/workspaces` and `/home/worker/.codex` are owned by `worker` (UID 1002).
-- `ARTIFACTS_DIR` is validated by `loadConfig()` to never reside inside `WORKSPACES_DIR`.
-- All workspace path operations resolve symlinks (`fs.realpath`) and verify containment within `/workspaces/{slug}`.
-
-### 6.3 Non-Destructive Checkpoints (`GIT_INDEX_FILE`)
-- Checkpoints snapshot tracked **and** untracked workspace files using a temporary index file (`GIT_INDEX_FILE=<tmp>` + `git read-tree` / `git add -A` / `git write-tree` / `git commit-tree`) stored under `refs/mcp-checkpoints/<checkpoint_id>` and recorded in SQLite `checkpoints`.
-- The workspace's real `.git/index` and `HEAD` remain completely untouched during snapshot creation.
-
-### 6.4 Untrusted Content Boundary
-- Data returned by `github_inspect` (PR descriptions, issue bodies/comments, GitHub Actions logs) and `infra_inspect` (worker tail logs, downstream MCP responses) is explicitly tagged/delimited as untrusted external data to mitigate indirect prompt injection.
+- **Docker Dual-UID & Networks (`docker/`)**: `gateway` (UID `1001`, GID `1001`, member of `worker`) owns `/data`, `/data/artifacts`, `CODEX_HOME=/data/codex` (`0700`, enforced by `entrypoint.sh` + `umask 0027`), and `/app`; `IMMUTABLE_GATEWAY_PATH` excludes `/opt/mise/shims`; exposes only internal port `8787` (zero host ports) and clears `CLOUDFLARE_TUNNEL_TOKEN`/`TUNNEL_TOKEN`. `worker` (UID `1002`, GID `1002`) owns `/workspaces` (`2775`), `/home/worker`, and `/opt/mise` (`2775`) with zero access to `/data`. When `SANDBOX_UID`/`SANDBOX_GID` are set, `startSubprocess()` drops privileges via `/usr/bin/sudo -n -H -u #1002 -g #1002 -- /usr/bin/env ...` (prepending `/opt/mise/shims` only to worker `PATH`) and terminates process groups (`SIGTERM` -> `SIGKILL` with `sudo` fallback on `EPERM` / `taskkill /T /F` on Windows). `cloudflared` sits on `edge_net` with `TUNNEL_TOKEN` only; optional `ops-mcp` (`--profile ops`) runs offline on `internal: true` `ops_net` as non-root `node` with `no-new-privileges:true`.
+- **Env Allowlist, Scrubbing & Untrusted Boundary**: `buildSandboxedEnv()` (`src/utils/exec.ts`) enforces an allowlist + `FORBIDDEN_ENV_KEY_PATTERN` stripping all gateway secrets and sets `CI=true`, `DEBIAN_FRONTEND=noninteractive`, `GIT_TERMINAL_PROMPT=0`, `PAGER=cat`, `GIT_PAGER=cat`, `TERM=dumb`, `NO_COLOR=1`. `buildCodexSandboxedEnv()` (`src/core/codexRunner.ts`) adds only `CODEX_HOME`, `CODEX_API_KEY`/`OPENAI_API_KEY`, and optional `CODEX_BASE_URL`/`OPENAI_BASE_URL`. `SecretScrubber` (`src/utils/secretScrubber.ts`) redacts known env/config secrets (`length >= 8`) and token regexes (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`, `github_pat_`, `sk-...`, JWT `eyJ...`, `cfut_`, `v1.0-...`, `Bearer`/`Basic`, URL credentials) to `[REDACTED_SECRET]`. `wrapUntrustedData()` (`src/mcp/outputGuard.ts`) delimits external GitHub, Cloudflare tail, and MCP-2 outputs with `<<<BEGIN_UNTRUSTED_DATA ...>>>` / `<<<END_UNTRUSTED_DATA ...>>>` after neutralizing spoofed markers.
+- **Path Confinement, Locks & Checkpoints**: `loadConfig()` rejects `DATA_DIR`, `ARTIFACTS_DIR`, or `DATABASE_PATH` overlapping `WORKSPACES_DIR`. `resolveSafeWorkspacePath()` (`src/core/workspaceLock.ts`) verifies logical + `realpathSync` containment in `${WORKSPACES_DIR}/{slug}`, rejects broken symlinks, and blocks `.env*`, `.dev.vars*`, `*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`, `.git/config`, and `.git/hooks/*` (including Windows trailing dot/space normalization). `WorkspaceLockManager` provides fair FIFO per-workspace RW locks (`5000ms` default timeout; fast-fail `ACTIVE_JOB_LOCK` on active background write jobs). `createCheckpoint()` (`src/core/gitSnapshot.ts`) copies `.git/index` to a temp `GIT_INDEX_FILE` and runs `git add -A` -> `git write-tree` -> `git commit-tree` -> `git update-ref refs/mcp-checkpoints/<id>` (with `core.hooksPath=/dev/null`, `credential.helper=`); rollback creates a safety checkpoint then runs `git clean -fd` + `git read-tree --reset -u <sha>`.
 
 ---
 
 ## 7. The 10-Tool MCP Contract
 
-All 10 tools register explicit MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`) and return `{ content: [{ type: "text", text }] }`:
+All 10 tools live in `src/mcp/tools/` and return `{ content: [{ type: "text", text }] }` (with `isError: true` on error).
 
-### 1. `workspace_manage`
-- **Annotations**: `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`
-- **Actions**:
-  - `list`: List registered workspaces, default branches, detected stacks, and last sync timestamps.
-  - `sync_github`: Clone or fast-forward/sync a GitHub repository (`owner/repo` or URL) into `/workspaces/{slug}`, detect stack (Node/Python/Go/Rust/Docker/Wrangler), and ingest repo playbooks (`AGENTS.md`, `CLAUDE.md`).
-  - `init_cf_ops`: Inspect/scaffold Cloudflare Worker/Pages operational context and `wrangler` metadata for a workspace.
-  - `list_checkpoints`: List git checkpoints recorded for `{slug}`.
-  - `rollback`: Restore workspace working tree to a target `checkpoint_id` (creating a safety checkpoint first).
+| # | Tool | Annotations (`R/D/O`) | OAuth Scope | Selector & Supported Operations |
+|---|---|---|---|---|
+| 1 | `workspace_manage` | `false / false / false` | `read` (`list`, `init_cf_ops`, `list_checkpoints`) / `write` (`sync_github`, `rollback`) | `action`: `list`, `sync_github` (clone/ff-only; `fetched_only_dirty` if dirty; detects stack + `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md`), `init_cf_ops` (read-only `wrangler.toml`/`wrangler.jsonc` inspection), `list_checkpoints`, `rollback` |
+| 2 | `code_explore` | `true / false / false` | `read` | `mode`: `pack` (`repomix --compress` / walker fallback), `search` (`rg` / fallback), `ast` (`ast-grep` / fallback), `read_lines` (5MB cap), `read_artifact` (`offset`, `limit` 1–50,000, default 20,000), `git_diff` (`staged`, `base_ref`); excludes sensitive files |
+| 3 | `code_patch` | `false / false / false` | `write` | `action`: `patch`, `create_or_overwrite`, `delete_file` (see contract below) |
+| 4 | `workspace_exec` | `false / false / false` | `write` | Sandboxed command in `/workspaces/{slug}` (`args`, `cwd`, `readonly` read-lock, `wait_ms` 500–15,000 default 12,000, `max_duration_sec` clamped to `CODEX_MAX_DURATION_SEC`); auto-promotes to background SQLite `shell_task` job on `wait_ms` expiry |
+| 5 | `dispatch_runner` | `false / false / false` | `write` | `mode`: `codex_readonly` (`read-only`, network off), `codex_write` (pre-run checkpoint + `workspace-write`, optional `allow_network`), `shell_task`. Supports `resume_thread_id`, `model`, `reasoning_effort`, config-clamped duration/token budgets, `CODEX_OUTPUT_SCHEMA` |
+| 6 | `job_status` | `false / false / false` | `read` (`write` if `cancel: true`) | Status, duration, `codex_thread_id`, `checkpoint_id`, `token_usage`, `git status -sb`, incremental events (`since_seq`, default last 20), report/error; `cancel: true` aborts via `AbortController` + process-group kill |
+| 7 | `github_inspect` | `true / false / true` | `read` | `mode`: `pr` (metadata, files, diff, checks, failed Actions logs), `issue` (body + comments), `workflow_failure` (recent failures or specific `run_id` logs) |
+| 8 | `infra_inspect` | `true / false / true` | `read` | `action`: Cloudflare (`zones`, `dns_records`, `workers`, `pages`, `kv_namespaces`, `d1_databases`, `waf_rules`, `worker_tail_logs` via `CLOUDFLARE_READONLY_API_TOKEN` fallback `CLOUDFLARE_API_TOKEN`) + MCP-2 (`downstream_list`, `downstream_call` for `readonlyTools` only) |
+| 9 | `stage_mutation_plan` | `false / false / false` | `write` | `target`: `cloudflare` (`mutation_type`: `dns_record_create`, `dns_record_update`, `dns_record_delete`, `waf_rule_update`, `d1_sql_mutation`) or `downstream_mcp` (`mutatingTools` + required `reason`). Zero writes; persists `MUTATION_PLAN_TTL_SEC` (900s) `plan_id` |
+| 10 | `publish_changes` | `false / true / true` | `write` | **Single external write exit** (`action`): `github_pr`, `github_pr_review`, `github_comment`, `cloudflare_worker_deploy`, `cloudflare_pages_deploy`, `execute_staged_plan`, `rollback_plan` (audited & webhook-notified) |
 
-### 2. `code_explore`
-- **Annotations**: `readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: false`
-- **Actions**:
-  - `pack`: Generate a token-budgeted repository map/pack (via `repomix` or structured walker respecting `.gitignore`).
-  - `search`: Fast regex/literal search (`ripgrep` / fallback) with file globs and context lines.
-  - `ast`: Structural AST search (`ast-grep` / fallback) across supported languages.
-  - `read_lines`: Bounded line-range file reader (`start_line`, `end_line`).
-  - `read_artifact`: Paginated reader (`offset`, `limit`) for offloaded outputs stored in `ARTIFACTS_DIR` by `artifact_id`.
-  - `git_diff`: Inspect staged/unstaged/branch diffs in `/workspaces/{slug}` (auto-offloading oversized diffs to `ARTIFACTS_DIR`).
+*`R/D/O` = `readOnlyHint / destructiveHint / openWorldHint`.*
 
-### 3. `code_patch`
-- **Annotations**: `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`
-- **Actions**:
-  - `patch`: Multi-file atomic edits using structured `hunks` (`old_text`, `new_text`, optional `line_hint` for disambiguation). Validates all files before writing; creates a pre-patch checkpoint.
-  - `create_or_overwrite`: Atomically create or replace files within `/workspaces/{slug}`.
-  - `delete_file`: Safely delete specified files within `/workspaces/{slug}`.
-- **L0/L1/L2 Validation Pipeline** (optional/configurable post-patch):
-  - **L0**: Syntax / parse / fast lint (`biome`, `ruff`, `shellcheck`, `hadolint`, `actionlint`, `tsc --noEmit` / `pyright`).
-  - **L1**: Targeted unit tests (`vitest`, `pytest`, etc.) scoped to affected files/modules.
-  - **L2**: Full project build / typecheck / test verification.
-  - Automatically rolls back or reports structured diagnostics if validation fails when `rollback_on_failure` is enabled.
-
-### 4. `workspace_exec`
-- **Annotations**: `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`
-- **Behavior**:
-  - Executes a shell command in `/workspaces/{slug}` using `buildSandboxedEnv()` (zero gateway secrets).
-  - Bounded synchronous wait: default `wait_ms: 12000`, maximum `15000`.
-  - If the command finishes within `wait_ms`, returns scrubbed `stdout`/`stderr` (offloading to `ARTIFACTS_DIR` if > `INLINE_OUTPUT_MAX_BYTES`).
-  - If the command is still running at `wait_ms`, **auto-promotes** the live process to a background SQLite job (`jobs` table) and returns the `job_id` immediately without killing the process.
-
-### 5. `dispatch_runner`
-- **Annotations**: `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`
-- **Modes**:
-  - `codex_readonly`: Runs `@openai/codex-sdk` in `read-only` sandbox mode (for deep analysis, planning, audits).
-  - `codex_write`: Creates a pre-run git checkpoint, then runs `@openai/codex-sdk` in `workspace-write` mode.
-  - `shell_task`: Launches a long-running background shell task tracked in SQLite `jobs`.
-- **Capabilities**: Supports `resume_thread_id` for continuing Codex threads, configurable `model`, `reasoning_effort`, `max_duration_sec`, `token_budget`, and real `AbortController` cancellation. Emits webhook notifications on completion/failure when `NOTIFY_WEBHOOK_URL` is configured.
-
-### 6. `job_status`
-- **Annotations**: `readOnlyHint: true` (note: supports `cancel: true` for aborting a job), `destructiveHint: false`, `openWorldHint: false`
-- **Behavior**:
-  - Returns job `status`, `runner_type`, `codex_thread_id`, `checkpoint_id`, incremental `events` (supports `since_seq`), `token_usage`, live `git status -sb` for the workspace, and `final_report_text` / `error_message`.
-  - When `cancel: true`, triggers the job's `AbortController` and executes cross-platform process-group termination (`SIGTERM` -> `SIGKILL` / `taskkill /T /F`).
-
-### 7. `github_inspect`
-- **Annotations**: `readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`
-- **Behavior**:
-  - Read-only GitHub inspection via Octokit (`GH_TOKEN`): PR metadata/files/reviews/checks, Issue details & comments, and GitHub Actions workflow run/job logs (including failed step log extraction).
-  - Wraps all returned external text in explicit untrusted-data boundaries.
-
-### 8. `infra_inspect`
-- **Annotations**: `readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: true`
-- **Actions**:
-  - **Cloudflare Read-Only** (uses `CLOUDFLARE_READONLY_API_TOKEN` with fallback to `CLOUDFLARE_API_TOKEN`): `zones | dns_records | workers | pages | kv_namespaces | d1_databases | waf_rules | worker_tail_logs`.
-  - **Downstream MCP-2 Read-Only Federation**: `downstream_list` (lists configured downstream servers and their allowed read-only/mutating tool policies) and `downstream_call` (strictly enforces that the requested tool is in `readonlyTools` and NOT in `deniedTools` or `mutatingTools`).
-
-### 9. `stage_mutation_plan`
-- **Annotations**: `readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: false`
-- **Behavior**:
-  - Stages an infrastructure mutation for **Cloudflare** (e.g., DNS record create/update/delete, KV write/delete, Worker route/secret/setting update, WAF rule update) or a **Downstream MCP-2** tool listed in `mutatingTools`.
-  - Fetches current state to capture a `rollback_payload` snapshot, renders a human-readable `summary_diff_text`, and persists the plan in `mutation_plans` with a **15-minute TTL** (`expires_at`) returning `plan_id`.
-  - Performs **zero** external writes.
-
-### 10. `publish_changes`
-- **Annotations**: `readOnlyHint: false`, `destructiveHint: true`, `openWorldHint: true`
-- **Role**: The **only** external mutation exit in the entire gateway. Every action is recorded in `audit_logs` and optionally fires `NOTIFY_WEBHOOK_URL`.
-- **Actions**:
-  - `github_pr`: Pushes a non-default feature branch and creates/updates a Pull Request. **Strictly blocks** direct push to `main`, `master`, or `default_branch`. Runs secret-scan sanity checks on diff before pushing.
-  - `github_pr_review`: Submits a PR review with line-level GitHub ```` ```suggestion ```` blocks or review comments.
-  - `github_comment`: Posts a comment on a GitHub Issue or PR.
-  - `cloudflare_worker_deploy`: Deploys a Worker from a workspace (defaults to preview/versions URL unless production promotion is explicitly requested).
-  - `cloudflare_pages_deploy`: Deploys Pages assets/branch from a workspace.
-  - `execute_staged_plan`: Atomically claims a non-expired `staged` `plan_id` from SQLite and executes the Cloudflare or Downstream MCP-2 mutation.
-  - `rollback_plan`: Executes the stored `rollback_payload` for a previously executed `plan_id` and marks it `rolled_back`.
+- **`code_patch` & L0/L1/L2 Pipeline (`src/core/codePatcher.ts`, `src/core/validationPipeline.ts`)**: `patch` uses `edits: [{ path, hunks: [{ search, replace, line_hint? }] }]` (`±25`-line disambiguation). Runs pre-write anti-placeholder & secret checks before checkpointing and atomic temp-file rename. Post-write validation: **L0** in-process anti-placeholder/conflict-marker (excludes `.md`/`.txt`/`.json`, overridable via `allow_placeholder_markers`), secret scan, and JSON/JS/TS syntax parsing; **L1** adaptive CLI linters (`2.5s` budget inside `2.8s` sync budget; skipped if `skip_l1` or binary missing/timed out: `biome`, `ruff`, `gofmt`/`go vet`, `shellcheck`, `hadolint`, `yamllint`, `actionlint`, `tofu fmt`, plus `tsc --noEmit --incremental`, `pyright`, `wrangler deploy --dry-run` only when `run_heavy_checks: true`); **L2** non-blocking `test-hint` suggesting `workspace_exec` commands. Rolls back on failure **by default** (`rollback_on_failure !== false`). `delete_file` skips validation.
+- **Crash Recovery**: `reconcileOrphanJobs()` (`src/core/codexRunner.ts`) marks orphaned `queued`/`running` jobs `failed` on startup.
+- **`publish_changes` Guarantees**: `github_pr` runs L0+L1 validation (`skipL2: true`) unless `skip_validation: true`, blocks `main`/`master`/`default_branch`/`base_branch`, fails closed on sensitive files, diff secrets, or truncated git scans, pushes to canonical `https://github.com/{owner}/{repo}.git`, and defaults `draft: true`. `cloudflare_worker_deploy` runs `wrangler versions upload` (`preview`, default) or `wrangler deploy` (`production`). `rollback_plan` runs `rollback_payload_json` for executed **Cloudflare** plans (`d1_sql_mutation` requires caller-supplied `rollback_sql`; `downstream_mcp` plans store `rollback_payload: null`).
 
 ---
 
-## 8. Downstream MCP-2 Federation
+## 8. Downstream MCP-2 Federation (`src/core/downstreamMcpBridge.ts`)
 
-Configured via `DOWNSTREAM_MCPS_JSON` or `DOWNSTREAM_MCPS_FILE`:
-- Supports both `http` (Streamable HTTP over internal Docker network e.g. `ops_net`) and `stdio` transports.
-- Enforces per-server capability lists:
-  - `deniedTools`: Always blocked.
-  - `readonlyTools`: Callable via `infra_inspect` (`downstream_call`).
-  - `mutatingTools`: Must be staged via `stage_mutation_plan` and executed via `publish_changes` (`execute_staged_plan`).
+Loaded from `DOWNSTREAM_MCPS_JSON` and/or `DOWNSTREAM_MCPS_FILE` (array, `{ servers: [...] }`, or keyed map; `enabled: false` skipped). Supports `http` (`StreamableHTTPClientTransport`, e.g., `http://ops-mcp:8090/mcp` on `ops_net`) and `stdio` (`StdioClientTransport` using `buildSandboxedEnv()` + explicit server `env`). Tool policy precedence (default-deny): `deniedTools` > `readonlyTools` (`infra_inspect`) > `mutatingTools` (`stage_mutation_plan` -> `publish_changes`) > unlisted (blocked).
 
 ---
 
 ## 9. Admin PWA (`/admin`) & Webhook Notifications
 
-- **`/admin`**: Lightweight progressive web app (manifest + service worker + cookie/CSRF-protected login using `ADMIN_PASSWORD_HASH`) providing:
-  - Workspace status, sync/checkpoint overview
-  - Active & recent jobs with live log/event tail and cancel button
-  - Staged & executed mutation plans with diff preview
-  - OAuth DCR clients & active token families with one-click revocation
-  - Audit log viewer
-- **Webhook Notifications (`NOTIFY_WEBHOOK_URL`)**:
-  - Fires scrubbed JSON POST events on async job completion/failure/timeout and `publish_changes` executions.
+- **`/admin` (`src/admin/index.ts`, `src/admin/ui.ts`)**: Decoupled from `src/core/*` via injected `cancelJob` / `rollbackCheckpoint` callbacks. Password or IdP login issues HMAC-signed `gb_admin_session` cookie (`12h` TTL) paired with `x-csrf-token` on mutating `/admin/api/*` requests. Serves PWA assets (`/admin/manifest.webmanifest`, `/admin/sw.js`, `/admin/icon.svg`) and APIs (`GET /api/summary`, `GET /api/jobs`, `GET /api/jobs/stream` SSE, `POST /api/jobs/:id/cancel`, `GET /api/workspaces`, `POST /api/workspaces/:slug/rollback`, `GET /api/oauth`, `POST /api/oauth/tokens/:hash/revoke`, `DELETE /api/oauth/clients/:id`, `GET /api/plans`, `GET /api/audit`).
+- **Webhooks (`src/core/webhookNotifier.ts`)**: `NOTIFY_WEBHOOK_URL` sends scrubbed JSON POST alerts (`5s` non-fatal timeout) on job finish/failure/cancel/timeout and `publish_changes` actions, auto-formatting for Slack, Discord, Feishu/Lark, or generic JSON.
