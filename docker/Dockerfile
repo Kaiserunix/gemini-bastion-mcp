@@ -23,7 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ripgrep \
       sudo \
       tini \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --system --add safe.directory '*'
 
 # ==============================================================================
 # Stage 2: builder (compiles TypeScript & native modules; stripped from runtime)

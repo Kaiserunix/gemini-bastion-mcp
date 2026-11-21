@@ -62,6 +62,10 @@ services:
       - edge_net
       - ops_net
       - runner_net
+    # On Ubuntu/Debian AppArmor hosts, uncomment to enable nested `bwrap` user namespaces
+    # (otherwise probeBwrapSupport cleanly falls back to UID 1002 worker isolation):
+    # security_opt:
+    #   - apparmor:unconfined
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/healthz"]
       interval: 30s
