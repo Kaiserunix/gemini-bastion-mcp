@@ -139,6 +139,8 @@ Path: `${DATA_DIR}/gateway.db` (overridable via `DATABASE_PATH` or `:memory:`). 
 All 10 tools live in `src/mcp/tools/` and return `{ content: [{ type: "text", text }] }` (with `isError: true` on error).
 
 > **MCP `instructions` & 4 Built-In Prompts (`v0.3.0`, `src/mcp/server.ts`)**: `McpServer` ships concise server-level `instructions` on `initialize` (teaching the 10-tool SOP) plus 4 official MCP Prompts (`review_pr`, `fix_issue`, `resume_workspace_task`, `ops_health_check`) so Web Gemini, Claude.ai, and ChatGPT orient themselves automatically across sessions.
+>
+> **Web Gemini 1-Approval-Gate Hint Mode (`MCP_TRUST_SANDBOX_HINTS`, default `true`)**: Web Gemini (`gemini.google.com`) ignores "Always Allow" for tools advertising `readOnlyHint: false`, prompting on every call. When `MCP_TRUST_SANDBOX_HINTS=true`, `McpToolRegistry.attachToServer()` advertises sandbox-local/staging Tools 1–9 with `readOnlyHint: true, destructiveHint: false` while `publish_changes` ALWAYS enforces `readOnlyHint: false, destructiveHint: true, openWorldHint: true` as the sole external approval gate (server-side `requiredScope`, OAuth 2.1, checkpoints, and `ApprovalGatePolicy` are unchanged). Set `MCP_TRUST_SANDBOX_HINTS=false` for strict MCP spec annotations (`readOnlyHint: false` on sandbox-mutating tools).
 
 | # | Tool | Annotations (`R/D/O`) | OAuth Scope | Selector & Supported Operations |
 |---|---|---|---|---|

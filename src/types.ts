@@ -87,6 +87,8 @@ export interface GatewayConfig {
   githubWebhookSecret?: string;
   watchdogAllowedRepos: string[];
   watchdogAgentDriver?: AgentDriverName;
+
+  mcpTrustSandboxHints: boolean;
 }
 
 // ============================================================================

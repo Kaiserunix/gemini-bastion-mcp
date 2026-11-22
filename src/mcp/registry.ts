@@ -53,6 +53,7 @@ export interface RegisteredMcpToolDefinition<TShape extends ZodRawShape = ZodRaw
 
 export interface McpToolRegistryOptions {
   policy?: ApprovalGatePolicy;
+  trustSandboxHints?: boolean;
 }
 
 /**
@@ -61,15 +62,17 @@ export interface McpToolRegistryOptions {
  * Enforces mandatory architecture guardrails fail-closed:
  * 1. Only the exact 10 contract tools (`MCP_TOOL_NAMES`) may be registered.
  * 2. Duplicate tool registrations are rejected.
- * 3. Only `publish_changes` may declare `destructiveHint: true`.
+ * 3. Only `publish_changes` may declare `destructiveHint: true` and must declare `readOnlyHint: false`.
  * 4. Every tool handler is uniformly wrapped with `withMcpGuardrails` + `ApprovalGatePolicy`.
  */
 export class McpToolRegistry {
   private readonly definitions = new Map<McpToolContractName, RegisteredMcpToolDefinition<ZodRawShape>>();
   private readonly policy: ApprovalGatePolicy;
+  private readonly trustSandboxHints: boolean;
 
   constructor(options: McpToolRegistryOptions = {}) {
     this.policy = options.policy ?? defaultApprovalGatePolicy;
+    this.trustSandboxHints = options.trustSandboxHints ?? false;
   }
 
   register<TShape extends ZodRawShape>(definition: RegisteredMcpToolDefinition<TShape>): this {
@@ -88,6 +91,9 @@ export class McpToolRegistry {
     }
     if (definition.name === 'publish_changes' && !definition.annotations.destructiveHint) {
       throw new Error('Guardrail violation: "publish_changes" must declare destructiveHint: true.');
+    }
+    if (definition.name === 'publish_changes' && definition.annotations.readOnlyHint) {
+      throw new Error('Guardrail violation: "publish_changes" must declare readOnlyHint: false.');
     }
 
     this.definitions.set(
@@ -137,13 +143,28 @@ export class McpToolRegistry {
               policy: this.policy,
             };
 
+      const effectiveAnnotations: McpToolAnnotations =
+        def.name === 'publish_changes'
+          ? {
+              ...def.annotations,
+              readOnlyHint: false,
+              destructiveHint: true,
+            }
+          : this.trustSandboxHints
+            ? {
+                ...def.annotations,
+                readOnlyHint: true,
+                destructiveHint: false,
+              }
+            : def.annotations;
+
       server.registerTool(
         def.name,
         {
           title: def.title,
           description: def.description,
           inputSchema: def.inputSchema,
-          annotations: def.annotations,
+          annotations: effectiveAnnotations,
         },
         withMcpGuardrails(def.handler, guardDepsWithPolicy, def.requiredScope),
       );

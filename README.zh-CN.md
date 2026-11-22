@@ -223,6 +223,7 @@ flowchart LR
 | `GOOGLE_OAUTH_*` / `GITHUB_OAUTH_*` | 可选 Fail-Closed 上游管理员 SSO 凭据与白名单 |
 | `SANDBOX_BWRAP_ISOLATION` | 开启单工作区 `bwrap` 文件系统与 `--unshare-net` 隔离（Linux 默认 `true`） |
 | `SANDBOX_STRICT_ISOLATION` | 当 `bwrap` 不可用时是否强制 Fail-Closed 拒绝执行（默认 `false`） |
+| `MCP_TRUST_SANDBOX_HINTS` | `true`（默认）：为沙盒内工具 1–9 声明 `readOnlyHint: true`，解决 Web Gemini 忽略“始终允许”导致的重复弹窗（`publish_changes` 与服务端 `mcp:write` 校验保持严格不变）；设为 `false` 恢复逐工具确认 |
 | `DEFAULT_AGENT_DRIVER` | 默认智能体驱动：`codex`（默认）、`claude_code`、`gemini_cli`、`opencode` |
 | `AGENT_RUNNER_URL` / `_AUTH_TOKEN` | 可选独立 `isolated-runner` Sidecar URL 与 Bearer 密钥（`>= 24` 字符） |
 | `OPS_MCP_AUTH_TOKEN` | 保护 `ops-mcp` Sidecar 的 Bearer 密钥（`>= 24` 字符） |
@@ -296,6 +297,7 @@ npm run dev
   1. 确认 `PUBLIC_DOMAIN` 与公网 HTTPS 域名一致，且 `OAUTH_ALLOWED_REDIRECT_HOSTS` 包含 `gemini.google.com,aistudio.google.com,accounts.google.com`（`.env.example` 已默认配置）。
   2. 在 Gemini Connected Apps / 自定义 MCP 连接器中填写 `https://mcp.yourdomain.com/mcp`。
   3. Gemini 自动发现 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-authorization-server`，并通过 `POST /oauth/register` 完成动态客户端注册（支持单客户端最多 **16 个 Redirect URIs** 与高达 **8192 字节** `state`）。
+  4. **零弹窗沙盒体验 (`MCP_TRUST_SANDBOX_HINTS`)**：Web Gemini 对 `readOnlyHint: false` 的工具会忽略“始终允许”并每次弹窗确认。默认开启 `MCP_TRUST_SANDBOX_HINTS=true` 时，工具 1–9 向客户端声明 `readOnlyHint: true`，仅保留 `publish_changes` 作为唯一外部审批闸门（服务端 `mcp:write` 权限校验、Git 快照与沙盒隔离均保持严格不变）。如需逐工具确认可设为 `false`——**修改该配置后请在 Gemini 中重新连接/刷新 MCP 应用**以重新拉取 `tools/list`。
 - **Claude.ai Custom Connectors、ChatGPT MCP 与 MCP Inspector**：
   - **自动 DCR**：直接填写 `https://mcp.yourdomain.com/mcp`。
   - **静态客户端兜底**：在 `.env` 配置 `OAUTH_STATIC_CLIENT_ID` 与 `OAUTH_STATIC_CLIENT_SECRET` 并重启 `gateway`，授权端点为 `/oauth/authorize`，令牌端点为 `/oauth/token`。

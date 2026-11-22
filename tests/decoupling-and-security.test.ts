@@ -920,6 +920,19 @@ describe('Contract-Enforcing McpToolRegistry, Adapter Decoupling & Streamable HT
       }),
     ).toThrow(/destructiveHint/i);
 
+    // Rejects readOnlyHint: true on publish_changes
+    expect(() =>
+      registry.register({
+        name: 'publish_changes',
+        title: 'Pub',
+        description: 'Pub',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, destructiveHint: true, openWorldHint: true },
+        guardDeps: baseGuard,
+        handler: async () => 'nope',
+      }),
+    ).toThrow(/readOnlyHint/i);
+
     // Register valid tool, then reject duplicate and incomplete attachToServer
     registry.register({
       name: 'workspace_manage',
@@ -1199,5 +1212,78 @@ describe('Contract-Enforcing McpToolRegistry, Adapter Decoupling & Streamable HT
     expect(res.status).toBe(405);
     expect(res.headers.get('allow')).toBe('POST');
     db.close();
+  });
+
+  it('toggles sandbox readOnlyHint via mcpTrustSandboxHints while keeping publish_changes strict and write scopes enforced', async () => {
+    const trustedConfig = { ...createTestConfig(), mcpTrustSandboxHints: true };
+    const strictConfig = { ...createTestConfig(), mcpTrustSandboxHints: false };
+    const db = openDatabase(':memory:');
+    const repos = createRepositories(db);
+
+    const makeDeps = (cfg: ReturnType<typeof createTestConfig>): McpToolDeps => ({
+      config: cfg,
+      db,
+      repos,
+      scrubber: new SecretScrubber(),
+      lockManager: new WorkspaceLockManager(),
+      githubService: new GitHubService(),
+      cloudflareService: new CloudflareService(),
+      downstreamBridge: new DownstreamMcpBridge(),
+      codexRunner: { name: 'mock', run: vi.fn() },
+    });
+
+    const listToolsViaHttp = async (cfg: ReturnType<typeof createTestConfig>) => {
+      const app = new Hono();
+      app.all('/mcp', createMcpHttpHandler(makeDeps(cfg)));
+      const res = await app.request('https://mcp.example.com/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      });
+      expect(res.status).toBe(200);
+      const rpc = (await res.json()) as { result: { tools: Array<Record<string, unknown>> } };
+      return new Map(rpc.result.tools.map((t) => [String(t.name), t]));
+    };
+
+    try {
+      const trustedTools = await listToolsViaHttp(trustedConfig);
+      for (const [name, tool] of trustedTools.entries()) {
+        const ann = tool.annotations as Record<string, unknown>;
+        if (name === 'publish_changes') {
+          expect(ann.readOnlyHint).toBe(false);
+          expect(ann.destructiveHint).toBe(true);
+        } else {
+          expect(ann.readOnlyHint).toBe(true);
+          expect(ann.destructiveHint).toBe(false);
+        }
+      }
+
+      const strictTools = await listToolsViaHttp(strictConfig);
+      expect((strictTools.get('code_patch')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+      expect((strictTools.get('workspace_exec')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+      expect((strictTools.get('job_status')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+      expect((strictTools.get('publish_changes')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+      expect((strictTools.get('publish_changes')!.annotations as Record<string, unknown>).destructiveHint).toBe(true);
+
+      // Server-side write scope guard remains enforced even when trustSandboxHints is true
+      const trustedRegistry = createMcpToolRegistry(makeDeps(trustedConfig));
+      const patchDef = trustedRegistry.get('code_patch')!;
+      const wrappedPatch = withMcpGuardrails(
+        patchDef.handler,
+        patchDef.guardDeps,
+        patchDef.requiredScope,
+      );
+      const blocked = await wrappedPatch(
+        { action: 'create_or_overwrite', slug: 'demo', files: [] },
+        { authInfo: { clientId: 'ro-client', scopes: ['mcp:read'] } },
+      );
+      expect(blocked.isError).toBe(true);
+      expect(blocked.content[0]?.text).toContain('insufficient_scope');
+    } finally {
+      db.close();
+    }
   });
 });

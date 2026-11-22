@@ -193,6 +193,7 @@ const envSchema = z.object({
   WATCHDOG_AGENT_DRIVER: z
     .enum(['codex', 'claude_code', 'gemini_cli', 'opencode'])
     .optional(),
+  MCP_TRUST_SANDBOX_HINTS: z.string().optional(),
 });
 
 function canonicalizeWithAncestor(targetPath: string): string {
@@ -445,6 +446,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     githubWebhookSecret: parsed.GITHUB_WEBHOOK_SECRET,
     watchdogAllowedRepos,
     watchdogAgentDriver: parsed.WATCHDOG_AGENT_DRIVER,
+
+    mcpTrustSandboxHints: parseBooleanFlag(parsed.MCP_TRUST_SANDBOX_HINTS, true),
   };
 }
 

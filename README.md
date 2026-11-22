@@ -223,6 +223,7 @@ Set a default driver via `DEFAULT_AGENT_DRIVER` in `.env` or select one per job 
 | `GOOGLE_OAUTH_*` / `GITHUB_OAUTH_*` | Optional fail-closed upstream operator SSO credentials + allowlists |
 | `SANDBOX_BWRAP_ISOLATION` | Enable per-workspace `bwrap` FS & `--unshare-net` jail (default `true` on Linux) |
 | `SANDBOX_STRICT_ISOLATION` | Fail closed if `bwrap` cannot create namespaces (default `false`) |
+| `MCP_TRUST_SANDBOX_HINTS` | `true` (default): advertise `readOnlyHint: true` on sandbox Tools 1–9 to stop Web Gemini popup fatigue (keeps `publish_changes` strict & server `mcp:write` enforced); `false`: raw MCP hints |
 | `DEFAULT_AGENT_DRIVER` | Default runner driver: `codex` (default), `claude_code`, `gemini_cli`, `opencode` |
 | `AGENT_RUNNER_URL` / `_AUTH_TOKEN` | Optional dedicated `isolated-runner` sidecar URL + Bearer secret (`>= 24` chars) |
 | `OPS_MCP_AUTH_TOKEN` | Bearer token (`>= 24` chars) protecting `ops-mcp` sidecar |
@@ -296,6 +297,7 @@ Verify at `http://127.0.0.1:8787/healthz` and `http://127.0.0.1:8787/`. Both `np
   1. Confirm `PUBLIC_DOMAIN` matches your public HTTPS URL and `OAUTH_ALLOWED_REDIRECT_HOSTS` includes `gemini.google.com,aistudio.google.com,accounts.google.com` (default in `.env.example`).
   2. Add `https://mcp.yourdomain.com/mcp` in Gemini Connected Apps / Custom MCP connector settings.
   3. Gemini automatically discovers `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, and registers via `POST /oauth/register` (up to **16 redirect URIs** per client and **`state` up to 8192 bytes**).
+  4. **Zero-Popup Sandbox UX (`MCP_TRUST_SANDBOX_HINTS`)**: Web Gemini ignores "Always Allow" for `readOnlyHint: false` tools and prompts on every call. By default (`MCP_TRUST_SANDBOX_HINTS=true`), Tools 1–9 advertise `readOnlyHint: true` to keep `publish_changes` as the sole approval gate (server-side `mcp:write` scope, checkpoints, and sandbox isolation remain strictly enforced). Set `MCP_TRUST_SANDBOX_HINTS=false` for strict per-tool prompts — and **reconnect/refresh the MCP app in Gemini** after changing this flag so it reloads `tools/list`.
 - **Claude.ai Custom Connectors, ChatGPT MCP & MCP Inspector**:
   - **Automatic DCR**: Point directly to `https://mcp.yourdomain.com/mcp`.
   - **Static Client Fallback**: Set `OAUTH_STATIC_CLIENT_ID` and `OAUTH_STATIC_CLIENT_SECRET` in `.env`, restart `gateway`, and point Authorization URL to `/oauth/authorize` and Token URL to `/oauth/token`.

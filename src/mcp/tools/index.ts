@@ -13,7 +13,10 @@ export { MCP_TOOL_NAMES, McpToolRegistry, type McpToolContractName };
  * omni-mcp-gateway tools.
  */
 export function createMcpToolRegistry(deps: McpToolDeps): McpToolRegistry {
-  const registry = new McpToolRegistry({ policy: getApprovalPolicy(deps) });
+  const registry = new McpToolRegistry({
+    policy: getApprovalPolicy(deps),
+    trustSandboxHints: deps.config.mcpTrustSandboxHints,
+  });
   registerWorkspaceTools(registry, deps);
   registerExecRunnerTools(registry, deps);
   registerInfraPublishTools(registry, deps);

@@ -413,7 +413,8 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
       ].sort(),
     );
 
-    // ONLY publish_changes has destructiveHint: true
+    // Default MCP_TRUST_SANDBOX_HINTS=true: Tools 1-9 emit readOnlyHint: true, destructiveHint: false
+    // for Web Gemini UX; ONLY publish_changes enforces readOnlyHint: false, destructiveHint: true.
     for (const [name, tool] of byName.entries()) {
       const ann = (tool.annotations ?? {}) as Record<string, unknown>;
       if (name === 'publish_changes') {
@@ -422,12 +423,11 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
         expect(ann.readOnlyHint).toBe(false);
       } else {
         expect(ann.destructiveHint).toBe(false);
+        expect(ann.readOnlyHint).toBe(true);
       }
     }
     expect((byName.get('github_inspect')!.annotations as Record<string, unknown>).openWorldHint).toBe(true);
     expect((byName.get('infra_inspect')!.annotations as Record<string, unknown>).openWorldHint).toBe(true);
-    expect((byName.get('code_explore')!.annotations as Record<string, unknown>).readOnlyHint).toBe(true);
-    expect((byName.get('job_status')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
 
     // 5b. Disallowed browser Origin -> 403 on /mcp; allowed Origin -> 200
     const badOriginRes = await gateway.app.request('https://mcp.example.com/mcp', {
@@ -792,10 +792,20 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(roCancelBlocked.isError).toBe(true);
     expect(roCancelBlocked.content[0].text).toContain('insufficient_scope');
 
+    const roExecBlocked = await callMcpTool(
+      gateway,
+      roToken,
+      'workspace_exec',
+      { slug: 'demo-repo', command: 'echo', args: ['hi'] },
+      204,
+    );
+    expect(roExecBlocked.isError).toBe(true);
+    expect(roExecBlocked.content[0].text).toContain('insufficient_scope');
+
     // 12. Passive MCP tool usage metering records numeric metrics only (never raw args or secrets)
     const usageSummary = gateway.repos.usage.getUsageSummary();
     expect(usageSummary.last1h.calls).toBeGreaterThanOrEqual(8);
-    expect(usageSummary.last1h.errors).toBeGreaterThanOrEqual(2);
+    expect(usageSummary.last1h.errors).toBeGreaterThanOrEqual(3);
     expect(usageSummary.last1h.inputBytes).toBeGreaterThan(0);
     expect(usageSummary.last1h.outputBytes).toBeGreaterThan(0);
     expect(usageSummary.last1h.estInputTokens).toBeGreaterThan(0);
@@ -813,5 +823,96 @@ describe('MCP Gateway E2E (OAuth + Stateless Streamable HTTP + 10 Tools)', () =>
     expect(serializedRows).not.toContain('Summarize repository architecture');
     expect(serializedRows).not.toContain('cf_e2e_write_token');
     expect(rawUsageRows.every((r) => r.client_id === dcrBody.client_id)).toBe(true);
+  });
+
+  it('emits strict readOnlyHint: false on sandbox-mutating tools when MCP_TRUST_SANDBOX_HINTS=false', async () => {
+    const rootDir = makeTempDir('omni-strict-hints-');
+    const dataDir = path.join(rootDir, 'data');
+    const workspacesDir = path.join(rootDir, 'workspaces');
+    const artifactsDir = path.join(dataDir, 'artifacts');
+    const adminPassword = 'strict-hints-password-123';
+
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      PORT: '8787',
+      PUBLIC_DOMAIN: 'https://mcp.example.com',
+      DATA_DIR: dataDir,
+      WORKSPACES_DIR: workspacesDir,
+      ARTIFACTS_DIR: artifactsDir,
+      DATABASE_PATH: ':memory:',
+      ADMIN_PASSWORD_HASH: hashPasswordScrypt(adminPassword),
+      OAUTH_SIGNING_SECRET: 'strict-hints-signing-secret-at-least-32-bytes',
+      MCP_TRUST_SANDBOX_HINTS: 'false',
+    });
+    expect(config.mcpTrustSandboxHints).toBe(false);
+
+    const gateway = createGatewayApp({ config });
+    gateways.push(gateway);
+
+    const dcrRes = await gateway.app.request('https://mcp.example.com/oauth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'Strict-Hints-Client',
+        redirect_uris: ['https://gemini.google.com/oauth/callback'],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'none',
+      }),
+    });
+    const dcrBody = (await dcrRes.json()) as { client_id: string };
+    const verifier = crypto.randomBytes(32).toString('base64url');
+    const challenge = computeS256Challenge(verifier);
+    const resource = 'https://mcp.example.com/mcp';
+
+    const authGetUrl = new URL('https://mcp.example.com/oauth/authorize');
+    authGetUrl.searchParams.set('response_type', 'code');
+    authGetUrl.searchParams.set('client_id', dcrBody.client_id);
+    authGetUrl.searchParams.set('redirect_uri', 'https://gemini.google.com/oauth/callback');
+    authGetUrl.searchParams.set('code_challenge', challenge);
+    authGetUrl.searchParams.set('code_challenge_method', 'S256');
+    authGetUrl.searchParams.set('state', 'strict-state-123456');
+    authGetUrl.searchParams.set('scope', 'mcp:tools');
+    authGetUrl.searchParams.set('resource', resource);
+
+    const authHtml = await (await gateway.app.request(authGetUrl.toString())).text();
+    const authPost = await gateway.app.request('https://mcp.example.com/oauth/authorize', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        auth_req_id: extractHiddenInput(authHtml, 'auth_req_id'),
+        csrf_token: extractHiddenInput(authHtml, 'csrf_token'),
+        password: adminPassword,
+        decision: 'approve',
+      }).toString(),
+    });
+    const code = new URL(authPost.headers.get('location')!).searchParams.get('code')!;
+    const tokJson = (await (
+      await gateway.app.request('https://mcp.example.com/oauth/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: 'https://gemini.google.com/oauth/callback',
+          client_id: dcrBody.client_id,
+          code_verifier: verifier,
+          resource,
+        }).toString(),
+      })
+    ).json()) as { access_token: string };
+
+    const listRpc = await mcpRpc(gateway, tokJson.access_token, 'tools/list', {}, 1);
+    const tools = (listRpc.result as { tools: Array<Record<string, unknown>> }).tools;
+    const byName = new Map(tools.map((t) => [String(t.name), t]));
+
+    expect((byName.get('code_explore')!.annotations as Record<string, unknown>).readOnlyHint).toBe(true);
+    expect((byName.get('github_inspect')!.annotations as Record<string, unknown>).readOnlyHint).toBe(true);
+    expect((byName.get('infra_inspect')!.annotations as Record<string, unknown>).readOnlyHint).toBe(true);
+    expect((byName.get('code_patch')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+    expect((byName.get('workspace_exec')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+    expect((byName.get('job_status')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+    expect((byName.get('publish_changes')!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
+    expect((byName.get('publish_changes')!.annotations as Record<string, unknown>).destructiveHint).toBe(true);
   });
 });
